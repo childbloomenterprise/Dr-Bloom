@@ -3,6 +3,7 @@
 // never raw inline queries on child tables in API routes.
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { createChildBloomAdminClient } from '@/lib/supabase/childbloom-admin';
 import type {
   Child, SleepLog, FeedingLog, SymptomReport,
   Milestone, GrowthMeasurement, Prescription,
@@ -13,7 +14,7 @@ function ninetyDaysAgo(): string {
 }
 
 // Verify a doctor has an active connection to this child before fetching anything.
-// Uses admin client so it bypasses RLS, but manually checks both IDs.
+// Uses Dr Bloom admin (doctor_child_connections lives in Dr Bloom project).
 export async function verifyDoctorConnection(doctorId: string, childId: string): Promise<boolean> {
   const supabase = createAdminClient();
   const { data } = await supabase
@@ -30,7 +31,7 @@ type ProfileJoin = { full_name: string | null } | null;
 
 // Full child profile with parent's display name.
 export async function fetchChildProfile(childId: string): Promise<(Child & { parent_name: string }) | null> {
-  const supabase = createAdminClient();
+  const supabase = createChildBloomAdminClient();
   const { data } = await supabase
     .from('children')
     .select('*, user_profiles!parent_id(full_name)')
@@ -47,7 +48,7 @@ export async function fetchChildProfile(childId: string): Promise<(Child & { par
 
 // Sleep logs — last 90 days.
 export async function fetchSleepLogs(childId: string): Promise<SleepLog[]> {
-  const supabase = createAdminClient();
+  const supabase = createChildBloomAdminClient();
   const { data } = await supabase
     .from('sleep_logs')
     .select('*')
@@ -59,7 +60,7 @@ export async function fetchSleepLogs(childId: string): Promise<SleepLog[]> {
 
 // Feeding logs — last 90 days.
 export async function fetchFeedingLogs(childId: string): Promise<FeedingLog[]> {
-  const supabase = createAdminClient();
+  const supabase = createChildBloomAdminClient();
   const { data } = await supabase
     .from('feeding_logs')
     .select('*')
@@ -71,7 +72,7 @@ export async function fetchFeedingLogs(childId: string): Promise<FeedingLog[]> {
 
 // Symptom reports — all time, sorted by recency.
 export async function fetchSymptomReports(childId: string): Promise<SymptomReport[]> {
-  const supabase = createAdminClient();
+  const supabase = createChildBloomAdminClient();
   const { data } = await supabase
     .from('symptom_reports')
     .select('*')
@@ -83,7 +84,7 @@ export async function fetchSymptomReports(childId: string): Promise<SymptomRepor
 
 // Milestones — all time.
 export async function fetchMilestones(childId: string): Promise<Milestone[]> {
-  const supabase = createAdminClient();
+  const supabase = createChildBloomAdminClient();
   const { data } = await supabase
     .from('milestones')
     .select('*')
@@ -94,7 +95,7 @@ export async function fetchMilestones(childId: string): Promise<Milestone[]> {
 
 // Growth measurements — all time (needed for trend charts).
 export async function fetchGrowthMeasurements(childId: string): Promise<GrowthMeasurement[]> {
-  const supabase = createAdminClient();
+  const supabase = createChildBloomAdminClient();
   const { data } = await supabase
     .from('growth_measurements')
     .select('*')
@@ -107,7 +108,7 @@ export async function fetchGrowthMeasurements(childId: string): Promise<GrowthMe
 export async function fetchActivePrescriptions(
   childId: string,
 ): Promise<Pick<Prescription, 'medication_name' | 'dosage' | 'unit' | 'frequency'>[]> {
-  const supabase = createAdminClient();
+  const supabase = createChildBloomAdminClient();
   const { data } = await supabase
     .from('prescriptions')
     .select('medication_name, dosage, unit, frequency')
@@ -132,7 +133,7 @@ export async function fetchAllChildDataForIris(childId: string) {
 
 // Overview: latest one entry from each category (for the Overview tab).
 export async function fetchChildOverview(childId: string) {
-  const supabase = createAdminClient();
+  const supabase = createChildBloomAdminClient();
   const [sleepRes, feedingRes, symptomRes, growthRes] = await Promise.all([
     supabase.from('sleep_logs').select('*').eq('child_id', childId).order('sleep_start', { ascending: false }).limit(1),
     supabase.from('feeding_logs').select('*').eq('child_id', childId).order('fed_at', { ascending: false }).limit(1),

@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { createChildBloomAdminClient } from '@/lib/supabase/childbloom-admin';
 import type { Child, UserProfile, PatientSearchResult } from '@/types/database';
 
 export async function GET(req: NextRequest) {
@@ -8,7 +9,7 @@ export async function GET(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  // Verify the caller is a doctor
+  // Verify the caller is a doctor (Dr Bloom user_profiles)
   const { data: profile } = await supabase
     .from('user_profiles')
     .select('role')
@@ -26,10 +27,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ results: [] });
   }
 
-  const admin = createAdminClient();
+  // ChildBloom admin — search children in ChildBloom project
+  const cbAdmin = createChildBloomAdminClient();
 
-  // Search children by first_name, last_name, or date_of_birth (admin bypasses RLS for discovery)
-  const { data: children, error } = await admin
+  const { data: children, error } = await cbAdmin
     .from('children')
     .select('*, parent:user_profiles!children_parent_id_fkey(id, full_name, email)')
     .or(
@@ -46,9 +47,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ results: [] });
   }
 
-  // Fetch all of this doctor's connections in one query
+  // Dr Bloom admin — check which children this doctor is already connected to
+  const drBloomAdmin = createAdminClient();
   const childIds = children.map((c: Child) => c.id);
-  const { data: connections } = await admin
+  const { data: connections } = await drBloomAdmin
     .from('doctor_child_connections')
     .select('id, child_id, status')
     .eq('doctor_id', user.id)

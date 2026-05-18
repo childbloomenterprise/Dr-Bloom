@@ -12,37 +12,24 @@ export async function POST(req: NextRequest) {
 
     if (!email || !password || !full_name) {
       return NextResponse.json(
-        { error: 'email, password, and full_name are required.' },
+        { error: 'Email, password, and full name are required.' },
         { status: 400 },
       );
     }
 
     const admin = createAdminClient();
 
-    // Check if this email already has a profile (ChildBloom parent or prior doctor attempt)
-    const { data: existingProfile } = await admin
-      .from('user_profiles')
-      .select('id, role')
-      .eq('email', email)
-      .maybeSingle();
-
-    if (existingProfile) {
-      // Upgrade existing account to doctor role
-      await admin
-        .from('user_profiles')
-        .update({ full_name, role: 'doctor', updated_at: new Date().toISOString() })
-        .eq('id', existingProfile.id);
-
-      await admin.from('doctor_profiles').upsert(
-        { id: existingProfile.id, specialty: specialty || 'General Pediatrics', updated_at: new Date().toISOString() },
-        { onConflict: 'id' },
+    // Check if email is already registered in Dr Bloom auth
+    const { data: existingUsers } = await admin.auth.admin.listUsers();
+    const alreadyExists = existingUsers?.users?.some(u => u.email === email);
+    if (alreadyExists) {
+      return NextResponse.json(
+        { error: 'An account with this email already exists. Please sign in.' },
+        { status: 400 },
       );
-
-      // Return existed=true so client knows to sign in with existing password
-      return NextResponse.json({ userId: existingProfile.id, existed: true });
     }
 
-    // Brand new user — create auth account
+    // Create auth user — handle_new_doctor trigger auto-creates user_profiles row
     const { data, error: authError } = await admin.auth.admin.createUser({
       email,
       password,
@@ -56,8 +43,7 @@ export async function POST(req: NextRequest) {
 
     const userId = data.user.id;
 
-    // ChildBloom's handle_new_user trigger may have already inserted a 'parent' row —
-    // upsert forces role to 'doctor' regardless
+    // Ensure user_profiles row exists (trigger may need a moment; upsert is safe)
     const { error: profileError } = await admin.from('user_profiles').upsert(
       { id: userId, email, full_name, role: 'doctor' },
       { onConflict: 'id' },
