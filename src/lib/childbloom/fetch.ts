@@ -2,7 +2,6 @@
 // All child data queries in Dr Bloom must go through this module —
 // never raw inline queries on child tables in API routes.
 
-import { createAdminClient } from '@/lib/supabase/admin';
 import { createChildBloomAdminClient } from '@/lib/supabase/childbloom-admin';
 import type {
   Child, SleepLog, FeedingLog, SymptomReport,
@@ -14,10 +13,11 @@ function ninetyDaysAgo(): string {
 }
 
 // Verify a doctor has an active connection to this child before fetching anything.
-// Uses Dr Bloom admin (doctor_child_connections lives in Dr Bloom project).
+// Source of truth is ChildBloom's doctor_child_connections — the parent approves there,
+// so we must check there (not Dr Bloom's own copy which only tracks the request).
 export async function verifyDoctorConnection(doctorId: string, childId: string): Promise<boolean> {
-  const supabase = createAdminClient();
-  const { data } = await supabase
+  const cbAdmin = createChildBloomAdminClient();
+  const { data } = await cbAdmin
     .from('doctor_child_connections')
     .select('id')
     .eq('doctor_id', doctorId)

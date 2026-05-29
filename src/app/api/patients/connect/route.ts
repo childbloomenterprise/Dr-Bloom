@@ -11,7 +11,24 @@ export async function POST(req: NextRequest) {
   const { childId, message } = await req.json();
   if (!childId) return NextResponse.json({ error: 'childId required' }, { status: 400 });
 
-  // Insert connection request into Dr Bloom — RLS enforces doctor_id = auth.uid()
+  const cbAdmin = createChildBloomAdminClient();
+  const drBloomAdmin = createAdminClient();
+
+  // Fetch doctor name + specialty from Dr Bloom in parallel with child lookup
+  const [
+    { data: doctorProfile },
+    { data: doctorSpecialty },
+    { data: child },
+  ] = await Promise.all([
+    drBloomAdmin.from('user_profiles').select('full_name').eq('id', user.id).single(),
+    drBloomAdmin.from('doctor_profiles').select('specialty').eq('id', user.id).maybeSingle(),
+    cbAdmin.from('children').select('parent_id, first_name, last_name').eq('id', childId).single(),
+  ]);
+
+  const doctorDisplayName = doctorProfile?.full_name ?? null;
+  const specialty = doctorSpecialty?.specialty ?? null;
+
+  // Insert connection into Dr Bloom (doctor-side record, RLS-enforced)
   const { error: connError } = await supabase.from('doctor_child_connections').insert({
     doctor_id: user.id,
     child_id: childId,
@@ -24,29 +41,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: connError.message }, { status: 500 });
   }
 
-  // Look up the child's parent in ChildBloom to send them a notification
-  const cbAdmin = createChildBloomAdminClient();
-  const { data: child } = await cbAdmin
-    .from('children')
-    .select('parent_id, first_name, last_name')
-    .eq('id', childId)
-    .single();
+  // Mirror connection into ChildBloom so the parent's inbox shows it.
+  // Upsert is safe because (doctor_id, child_id) has a unique constraint.
+  // If the doctor re-sends after a decline, this resets it to pending.
+  await cbAdmin.from('doctor_child_connections').upsert(
+    {
+      doctor_id: user.id,
+      child_id: childId,
+      status: 'pending',
+      initiated_by: 'doctor',
+      request_message: message ?? null,
+      doctor_display_name: doctorDisplayName,
+      doctor_specialty: specialty,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'doctor_id,child_id' }
+  );
 
+  // Notify parent via ChildBloom notifications table
   if (child?.parent_id) {
-    // Look up doctor's name from Dr Bloom
-    const drBloomAdmin = createAdminClient();
-    const { data: doctor } = await drBloomAdmin
-      .from('user_profiles')
-      .select('full_name')
-      .eq('id', user.id)
-      .single();
-
-    // Notify parent via ChildBloom notifications table (recipient_id + type columns match)
+    const childName = child.first_name ?? 'your child';
     await cbAdmin.from('notifications').insert({
       recipient_id: child.parent_id,
       type: 'connection_request',
-      title: `Dr. ${doctor?.full_name ?? 'A doctor'} requested access`,
-      body: `A doctor has requested access to ${child.first_name}'s health data in Dr Bloom.${message ? ` Message: "${message}"` : ''}`,
+      title: `Dr. ${doctorDisplayName ?? 'A doctor'} requested access`,
+      body: `A doctor has requested access to ${childName}'s health data in Dr Bloom.${message ? ` Message: "${message}"` : ''}`,
       data: { doctor_id: user.id, child_id: childId },
     });
   }
