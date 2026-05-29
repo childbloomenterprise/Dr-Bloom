@@ -1,6 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { createAdminClient } from '@/lib/supabase/admin';
 import { createChildBloomAdminClient } from '@/lib/supabase/childbloom-admin';
 import type { Child, UserProfile, PatientSearchResult } from '@/types/database';
 
@@ -27,7 +26,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ results: [] });
   }
 
-  // ChildBloom admin — search children in ChildBloom project
   const cbAdmin = createChildBloomAdminClient();
 
   const { data: children, error } = await cbAdmin
@@ -47,10 +45,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ results: [] });
   }
 
-  // Dr Bloom admin — check which children this doctor is already connected to
-  const drBloomAdmin = createAdminClient();
+  // Check connection status from ChildBloom — source of truth for approval state
   const childIds = children.map((c: Child) => c.id);
-  const { data: connections } = await drBloomAdmin
+  const { data: connections } = await cbAdmin
     .from('doctor_child_connections')
     .select('id, child_id, status')
     .eq('doctor_id', user.id)

@@ -14,6 +14,7 @@ import type {
   SleepLog, FeedingLog, SymptomReport, Milestone, GrowthMeasurement,
 } from '@/types/database';
 
+
 type TabId = 'overview' | 'sleep' | 'feeding' | 'symptoms' | 'milestones' | 'growth';
 
 interface Props {
@@ -22,6 +23,11 @@ interface Props {
   connection: DoctorChildConnection;
   prescriptions: Partial<Prescription>[];
   healthAlerts: HealthAlert[];
+  sleepLogs: SleepLog[];
+  feedingLogs: FeedingLog[];
+  symptoms: SymptomReport[];
+  milestones: Milestone[];
+  growth: GrowthMeasurement[];
   doctorId: string;
 }
 
@@ -41,20 +47,13 @@ const SEVERITY_COLOR: Record<string, string> = {
   emergency: T.danger,
 };
 
-export function ChildProfileClient({ child, parent, connection, prescriptions, healthAlerts, doctorId }: Props) {
+export function ChildProfileClient({ child, parent, connection, prescriptions, healthAlerts, sleepLogs, feedingLogs, symptoms, milestones, growth, doctorId }: Props) {
   const router = useRouter();
   const supabase = createClient();
 
   const [tab, setTab] = React.useState<TabId>('overview');
   const [isMobile, setIsMobile] = React.useState(false);
   const [irisOpen, setIrisOpen] = React.useState(false);
-
-  // Tab data (lazy-loaded)
-  const [sleepLogs, setSleepLogs] = React.useState<SleepLog[] | null>(null);
-  const [feedingLogs, setFeedingLogs] = React.useState<FeedingLog[] | null>(null);
-  const [symptoms, setSymptoms] = React.useState<SymptomReport[] | null>(null);
-  const [milestones, setMilestones] = React.useState<Milestone[] | null>(null);
-  const [growth, setGrowth] = React.useState<GrowthMeasurement[] | null>(null);
 
   // Iris state
   const [irisMessages, setIrisMessages] = React.useState<{ role: string; content: string }[]>([]);
@@ -69,55 +68,6 @@ export function ChildProfileClient({ child, parent, connection, prescriptions, h
     window.addEventListener('resize', check);
     return () => window.removeEventListener('resize', check);
   }, []);
-
-  // Lazy load tab data when tab changes
-  React.useEffect(() => {
-    const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-
-    if (tab === 'sleep' && sleepLogs === null) {
-      supabase
-        .from('sleep_logs')
-        .select('*')
-        .eq('child_id', child.id)
-        .gte('sleep_start', thirtyDaysAgo)
-        .order('sleep_start', { ascending: false })
-        .then(({ data }) => setSleepLogs((data ?? []) as SleepLog[]));
-    }
-    if (tab === 'feeding' && feedingLogs === null) {
-      supabase
-        .from('feeding_logs')
-        .select('*')
-        .eq('child_id', child.id)
-        .gte('fed_at', thirtyDaysAgo)
-        .order('fed_at', { ascending: false })
-        .then(({ data }) => setFeedingLogs((data ?? []) as FeedingLog[]));
-    }
-    if (tab === 'symptoms' && symptoms === null) {
-      supabase
-        .from('symptom_reports')
-        .select('*')
-        .eq('child_id', child.id)
-        .order('reported_at', { ascending: false })
-        .then(({ data }) => setSymptoms((data ?? []) as SymptomReport[]));
-    }
-    if (tab === 'milestones' && milestones === null) {
-      supabase
-        .from('milestones')
-        .select('*')
-        .eq('child_id', child.id)
-        .order('achieved_at', { ascending: false })
-        .then(({ data }) => setMilestones((data ?? []) as Milestone[]));
-    }
-    if (tab === 'growth' && growth === null) {
-      supabase
-        .from('growth_measurements')
-        .select('*')
-        .eq('child_id', child.id)
-        .order('measured_at', { ascending: false })
-        .then(({ data }) => setGrowth((data ?? []) as GrowthMeasurement[]));
-    }
-  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-generate pre-visit brief when Iris panel opens
   React.useEffect(() => {
@@ -472,8 +422,7 @@ function OverviewTab({ child, healthAlerts, prescriptions, onResolve }: {
   );
 }
 
-function SleepTab({ logs }: { logs: SleepLog[] | null }) {
-  if (logs === null) return <Stack gap={10}><Skeleton h={100} /><Skeleton h={200} /></Stack>;
+function SleepTab({ logs }: { logs: SleepLog[] }) {
 
   const avgHours = logs.length
     ? logs.reduce((s, l) => s + (l.duration_minutes ?? 0) / 60, 0) / logs.length
@@ -523,8 +472,7 @@ function SleepTab({ logs }: { logs: SleepLog[] | null }) {
   );
 }
 
-function FeedingTab({ logs }: { logs: FeedingLog[] | null }) {
-  if (logs === null) return <Stack gap={10}><Skeleton h={200} /></Stack>;
+function FeedingTab({ logs }: { logs: FeedingLog[] }) {
   return (
     <Card p={0}>
       <div style={{ padding: '16px 20px', borderBottom: `1px solid ${T.line}` }}>
@@ -551,8 +499,7 @@ function FeedingTab({ logs }: { logs: FeedingLog[] | null }) {
   );
 }
 
-function SymptomsTab({ reports }: { reports: SymptomReport[] | null }) {
-  if (reports === null) return <Stack gap={10}><Skeleton h={200} /></Stack>;
+function SymptomsTab({ reports }: { reports: SymptomReport[] }) {
   const severityColor = (s: number) =>
     s >= 4 ? T.danger : s === 3 ? T.accent : s === 2 ? T.gold : T.brandSoft;
 
@@ -581,8 +528,7 @@ function SymptomsTab({ reports }: { reports: SymptomReport[] | null }) {
   );
 }
 
-function MilestonesTab({ milestones }: { milestones: Milestone[] | null }) {
-  if (milestones === null) return <Stack gap={10}><Skeleton h={200} /></Stack>;
+function MilestonesTab({ milestones }: { milestones: Milestone[] }) {
   const categories = ['motor', 'language', 'social', 'cognitive', 'feeding', 'other'] as const;
 
   return (
@@ -615,8 +561,7 @@ function MilestonesTab({ milestones }: { milestones: Milestone[] | null }) {
   );
 }
 
-function GrowthTab({ measurements }: { measurements: GrowthMeasurement[] | null }) {
-  if (measurements === null) return <Stack gap={10}><Skeleton h={200} /></Stack>;
+function GrowthTab({ measurements }: { measurements: GrowthMeasurement[] }) {
 
   const weightPoints = measurements.map(m => m.weight_grams ? m.weight_grams / 1000 : 0).reverse();
   const heightPoints = measurements.map(m => m.height_cm ?? 0).reverse();
