@@ -5,8 +5,8 @@ import { theme as T } from '@/lib/theme';
 import { ageFromDob } from '@/lib/age';
 import { createClient } from '@/lib/supabase/client';
 import {
-  Stack, HRow, Card, Button, Input, Body, Eyebrow, Display,
-  Avatar, Chip, Spacer, Spark, Divider,
+  Stack, HRow, Card, Body, Eyebrow, Display,
+  Avatar, Chip, Spark,
 } from '@/components/primitives';
 import { Icon } from '@/components/Icon';
 import type {
@@ -14,20 +14,16 @@ import type {
   SleepLog, FeedingLog, SymptomReport, Milestone, GrowthMeasurement,
 } from '@/types/database';
 
-
 type TabId = 'overview' | 'sleep' | 'feeding' | 'symptoms' | 'milestones' | 'growth';
 
 interface Props {
   child: Child;
   parent: Pick<UserProfile, 'id' | 'full_name' | 'email'> | null;
   connection: DoctorChildConnection;
+  preVisitNotes: string | null;
+  preVisitNotesUpdatedAt: string | null;
   prescriptions: Partial<Prescription>[];
   healthAlerts: HealthAlert[];
-  sleepLogs: SleepLog[];
-  feedingLogs: FeedingLog[];
-  symptoms: SymptomReport[];
-  milestones: Milestone[];
-  growth: GrowthMeasurement[];
   doctorId: string;
 }
 
@@ -47,13 +43,31 @@ const SEVERITY_COLOR: Record<string, string> = {
   emergency: T.danger,
 };
 
-export function ChildProfileClient({ child, parent, connection, prescriptions, healthAlerts, sleepLogs, feedingLogs, symptoms, milestones, growth, doctorId }: Props) {
+type TabCache = {
+  sleep?:      SleepLog[];
+  feeding?:    FeedingLog[];
+  symptoms?:   SymptomReport[];
+  milestones?: Milestone[];
+  growth?:     GrowthMeasurement[];
+};
+
+export function ChildProfileClient({ child, parent, connection, preVisitNotes, preVisitNotesUpdatedAt, prescriptions, healthAlerts, doctorId }: Props) {
   const router = useRouter();
   const supabase = createClient();
 
   const [tab, setTab] = React.useState<TabId>('overview');
   const [isMobile, setIsMobile] = React.useState(false);
   const [irisOpen, setIrisOpen] = React.useState(false);
+
+  // Tab data cache — loaded once per tab, kept in memory
+  const [tabCache, setTabCache] = React.useState<TabCache>({});
+  const [tabLoading, setTabLoading] = React.useState(false);
+
+  // Send note to parent
+  const [noteOpen, setNoteOpen] = React.useState(false);
+  const [noteText, setNoteText] = React.useState('');
+  const [noteSending, setNoteSending] = React.useState(false);
+  const [noteToast, setNoteToast] = React.useState<string | null>(null);
 
   // Iris state
   const [irisMessages, setIrisMessages] = React.useState<{ role: string; content: string }[]>([]);
@@ -68,6 +82,22 @@ export function ChildProfileClient({ child, parent, connection, prescriptions, h
     window.addEventListener('resize', check);
     return () => window.removeEventListener('resize', check);
   }, []);
+
+  // Lazy-load tab data on first visit to each tab
+  React.useEffect(() => {
+    if (tab === 'overview') return;
+    if (tabCache[tab as keyof TabCache] !== undefined) return; // already cached
+
+    setTabLoading(true);
+    fetch(`/api/patients/${child.id}/tab-data?tab=${tab}`)
+      .then(r => r.json())
+      .then(json => {
+        if (json.data) {
+          setTabCache(prev => ({ ...prev, [tab]: json.data }));
+        }
+      })
+      .finally(() => setTabLoading(false));
+  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-generate pre-visit brief when Iris panel opens
   React.useEffect(() => {
@@ -85,9 +115,7 @@ export function ChildProfileClient({ child, parent, connection, prescriptions, h
     })
       .then(r => r.json())
       .then(json => {
-        if (json.reply) {
-          setIrisMessages([{ role: 'assistant', content: json.reply }]);
-        }
+        if (json.reply) setIrisMessages([{ role: 'assistant', content: json.reply }]);
       })
       .finally(() => setIrisLoading(false));
   }, [irisOpen]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -96,13 +124,36 @@ export function ChildProfileClient({ child, parent, connection, prescriptions, h
     irisEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [irisMessages]);
 
+  async function sendNote(e: React.FormEvent) {
+    e.preventDefault();
+    if (!noteText.trim() || noteSending) return;
+    setNoteSending(true);
+    try {
+      const res = await fetch(`/api/patients/${child.id}/message`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: noteText.trim() }),
+      });
+      if (res.ok) {
+        setNoteText('');
+        setNoteOpen(false);
+        setNoteToast(`Note sent to ${parent?.full_name ?? 'parent'}`);
+        setTimeout(() => setNoteToast(null), 4000);
+      } else {
+        const j = await res.json();
+        setNoteToast(`Error: ${j.error}`);
+        setTimeout(() => setNoteToast(null), 4000);
+      }
+    } catch { setNoteToast('Network error'); setTimeout(() => setNoteToast(null), 4000); }
+    setNoteSending(false);
+  }
+
   async function sendIrisMessage(e: React.FormEvent) {
     e.preventDefault();
     if (!irisInput.trim() || irisSending) return;
     const userMsg = irisInput.trim();
     setIrisInput('');
-    const updatedHistory = [...irisMessages, { role: 'user', content: userMsg }];
-    setIrisMessages(updatedHistory);
+    setIrisMessages(prev => [...prev, { role: 'user', content: userMsg }]);
     setIrisSending(true);
     try {
       const res = await fetch('/api/iris', {
@@ -116,9 +167,7 @@ export function ChildProfileClient({ child, parent, connection, prescriptions, h
         }),
       });
       const json = await res.json();
-      if (json.reply) {
-        setIrisMessages(prev => [...prev, { role: 'assistant', content: json.reply }]);
-      }
+      if (json.reply) setIrisMessages(prev => [...prev, { role: 'assistant', content: json.reply }]);
     } catch { /* silent */ }
     setIrisSending(false);
   }
@@ -171,13 +220,39 @@ export function ChildProfileClient({ child, parent, connection, prescriptions, h
               </Stack>
             </HRow>
 
-            <button
-              onClick={() => setIrisOpen(o => !o)}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 40, padding: '0 16px', borderRadius: T.radius.pill, background: irisOpen ? T.brandDeep : T.brand, color: '#fff', border: 'none', fontFamily: T.sans, fontSize: 13, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}
-            >
-              <Icon name="sparkle" size={14} color="#fff" />
-              {isMobile ? 'Iris' : 'Ask Iris'}
-            </button>
+            <HRow gap={8}>
+              {/* Send note to parent */}
+              <button
+                onClick={() => setNoteOpen(o => !o)}
+                className="dr-btn"
+                style={{
+                  '--btn-glow': 'rgba(209,122,79,.32)',
+                  display: 'inline-flex', alignItems: 'center', gap: 6, height: 40, padding: '0 14px',
+                  borderRadius: T.radius.pill, background: noteOpen ? T.accent : T.accentSoft,
+                  color: noteOpen ? '#fff' : T.accent, border: 'none', fontFamily: T.sans,
+                  fontSize: 13, fontWeight: 600, cursor: 'pointer', flexShrink: 0,
+                } as React.CSSProperties}
+              >
+                <Icon name="send" size={14} color="currentColor" />
+                {isMobile ? '' : 'Note'}
+              </button>
+
+              {/* Ask Iris */}
+              <button
+                onClick={() => setIrisOpen(o => !o)}
+                className="dr-btn"
+                style={{
+                  '--btn-glow': 'rgba(15,61,46,.32)',
+                  display: 'inline-flex', alignItems: 'center', gap: 6, height: 40, padding: '0 16px',
+                  borderRadius: T.radius.pill, background: irisOpen ? T.brandDeep : T.brand,
+                  color: '#fff', border: 'none', fontFamily: T.sans, fontSize: 13, fontWeight: 600,
+                  cursor: 'pointer', flexShrink: 0,
+                } as React.CSSProperties}
+              >
+                <Icon name="sparkle" size={14} color="#fff" />
+                {isMobile ? 'Iris' : 'Ask Iris'}
+              </button>
+            </HRow>
           </HRow>
 
           {/* Tab bar */}
@@ -210,26 +285,101 @@ export function ChildProfileClient({ child, parent, connection, prescriptions, h
               child={child}
               healthAlerts={healthAlerts}
               prescriptions={prescriptions}
+              preVisitNotes={preVisitNotes}
+              preVisitNotesUpdatedAt={preVisitNotesUpdatedAt}
               onResolve={resolveAlert}
             />
           )}
           {tab === 'sleep' && (
-            <SleepTab logs={sleepLogs} />
+            <SleepTab logs={tabCache.sleep ?? null} loading={tabLoading} />
           )}
           {tab === 'feeding' && (
-            <FeedingTab logs={feedingLogs} />
+            <FeedingTab logs={tabCache.feeding ?? null} loading={tabLoading} />
           )}
           {tab === 'symptoms' && (
-            <SymptomsTab reports={symptoms} />
+            <SymptomsTab reports={tabCache.symptoms ?? null} loading={tabLoading} />
           )}
           {tab === 'milestones' && (
-            <MilestonesTab milestones={milestones} />
+            <MilestonesTab milestones={tabCache.milestones ?? null} loading={tabLoading} />
           )}
           {tab === 'growth' && (
-            <GrowthTab measurements={growth} />
+            <GrowthTab measurements={tabCache.growth ?? null} loading={tabLoading} />
           )}
         </div>
       </div>
+
+      {/* Send note to parent — sliding panel */}
+      {noteOpen && (
+        <div style={{
+          width: isMobile ? '100%' : 340,
+          height: isMobile ? 'auto' : '100vh',
+          position: isMobile ? 'fixed' : 'relative',
+          bottom: isMobile ? 0 : undefined, left: isMobile ? 0 : undefined, right: isMobile ? 0 : undefined,
+          background: T.surface, borderLeft: `1px solid ${T.line}`,
+          display: 'flex', flexDirection: 'column',
+          zIndex: isMobile ? 55 : undefined,
+          boxShadow: isMobile ? T.shadow.lg : 'none',
+          borderRadius: isMobile ? `${T.radius.xl}px ${T.radius.xl}px 0 0` : 0,
+          padding: 22,
+        }}>
+          <HRow gap={10} style={{ alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+            <Stack gap={2}>
+              <Body size={14} weight={600} color={T.ink900}>Send note to parent</Body>
+              <Body size={12} color={T.ink400}>
+                {parent?.full_name ?? 'Parent'} · {child.first_name}
+              </Body>
+            </Stack>
+            <button onClick={() => setNoteOpen(false)} style={{ width: 32, height: 32, borderRadius: T.radius.pill, background: T.surfaceDim, border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.ink700, cursor: 'pointer' }}>
+              <Icon name="close" size={15} stroke={1.7} />
+            </button>
+          </HRow>
+          <form onSubmit={sendNote}>
+            <textarea
+              value={noteText}
+              onChange={e => setNoteText(e.target.value)}
+              placeholder={`E.g. "Vishnu's weight is on track. Please log sleep for the next 7 days."`}
+              rows={5}
+              style={{
+                width: '100%', padding: '12px 14px', borderRadius: T.radius.md,
+                border: `1px solid ${T.line}`, background: T.surfaceDim,
+                fontFamily: T.sans, fontSize: 13.5, color: T.ink900, outline: 'none',
+                resize: 'vertical', lineHeight: 1.5, boxSizing: 'border-box',
+              }}
+            />
+            <Body size={11} color={T.ink400} style={{ marginTop: 6, marginBottom: 14 }}>
+              Parent will see this as a notification in ChildBloom.
+            </Body>
+            <button
+              type="submit"
+              disabled={noteSending || !noteText.trim()}
+              className="dr-btn"
+              style={{
+                '--btn-glow': 'rgba(209,122,79,.32)',
+                width: '100%', height: 46, borderRadius: T.radius.pill,
+                background: T.accent, color: '#fff', border: 'none',
+                fontFamily: T.sans, fontSize: 14, fontWeight: 600,
+                opacity: noteSending || !noteText.trim() ? 0.55 : 1,
+              } as React.CSSProperties}
+            >
+              {noteSending ? 'Sending…' : 'Send note'}
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* Note sent toast */}
+      {noteToast && (
+        <div style={{
+          position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+          background: noteToast.startsWith('Error') ? T.danger : T.ink900,
+          color: '#fff', padding: '12px 22px', borderRadius: T.radius.pill,
+          fontFamily: T.sans, fontSize: 13.5, fontWeight: 500,
+          boxShadow: T.shadow.lg, zIndex: 300, pointerEvents: 'none',
+          whiteSpace: 'nowrap',
+        }}>
+          {noteToast}
+        </div>
+      )}
 
       {/* Iris panel */}
       {irisOpen && (
@@ -247,7 +397,6 @@ export function ChildProfileClient({ child, parent, connection, prescriptions, h
           boxShadow: isMobile ? T.shadow.lg : 'none',
           borderRadius: isMobile ? `${T.radius.xl}px ${T.radius.xl}px 0 0` : 0,
         }}>
-          {/* Iris header */}
           <div style={{ padding: '16px 18px 14px', borderBottom: `1px solid ${T.line}`, flexShrink: 0 }}>
             <HRow gap={8} style={{ alignItems: 'center', justifyContent: 'space-between' }}>
               <HRow gap={8} style={{ alignItems: 'center' }}>
@@ -265,7 +414,6 @@ export function ChildProfileClient({ child, parent, connection, prescriptions, h
             </HRow>
           </div>
 
-          {/* Messages */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
             {irisLoading && (
               <div style={{ padding: '12px 14px', background: T.brandWash, borderRadius: T.radius.md }}>
@@ -288,7 +436,6 @@ export function ChildProfileClient({ child, parent, connection, prescriptions, h
             <div ref={irisEndRef} />
           </div>
 
-          {/* Input */}
           <form onSubmit={sendIrisMessage} style={{ padding: '12px 14px', borderTop: `1px solid ${T.line}`, flexShrink: 0 }}>
             <HRow gap={8}>
               <input
@@ -322,27 +469,57 @@ export function ChildProfileClient({ child, parent, connection, prescriptions, h
   );
 }
 
-// ── Tab components ────────────────────────────────────────────────────────────
+// ── Shared ────────────────────────────────────────────────────────────────────
 
 function Mono({ children, size = 11, color, style }: { children: React.ReactNode; size?: number; color?: string; style?: React.CSSProperties }) {
   return <span style={{ fontFamily: T.mono, fontSize: size, color: color || T.ink400, letterSpacing: '0.04em', ...style }}>{children}</span>;
 }
 
-function Skeleton({ h = 80, style }: { h?: number; style?: React.CSSProperties }) {
+function TabSkeleton() {
   return (
-    <div style={{ height: h, borderRadius: T.radius.md, background: T.ink100, animation: 'pulse 1.5s ease-in-out infinite', ...style }} />
+    <Stack gap={12}>
+      {[100, 200, 80].map((h, i) => (
+        <div key={i} style={{ height: h, borderRadius: T.radius.md, background: T.ink100, animation: 'pulse 1.5s ease-in-out infinite' }} />
+      ))}
+    </Stack>
   );
 }
 
-function OverviewTab({ child, healthAlerts, prescriptions, onResolve }: {
+// ── Tab components ────────────────────────────────────────────────────────────
+
+function OverviewTab({ child, healthAlerts, prescriptions, preVisitNotes, preVisitNotesUpdatedAt, onResolve }: {
   child: Child;
   healthAlerts: HealthAlert[];
   prescriptions: Partial<Prescription>[];
+  preVisitNotes: string | null;
+  preVisitNotesUpdatedAt: string | null;
   onResolve: (id: string) => void;
 }) {
   return (
     <Stack gap={16}>
-      {/* Active alerts */}
+
+      {/* Parent's pre-visit notes — shown first so doctor sees them immediately */}
+      {preVisitNotes && (
+        <Card p={18} tone="warm">
+          <HRow gap={8} style={{ alignItems: 'center', marginBottom: 10 }}>
+            <div style={{ width: 28, height: 28, borderRadius: T.radius.md, background: T.accent + '22', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Icon name="note" size={14} color={T.accent} />
+            </div>
+            <Stack gap={1}>
+              <Eyebrow color={T.accent}>Parent&apos;s pre-visit notes</Eyebrow>
+              {preVisitNotesUpdatedAt && (
+                <span style={{ fontFamily: T.mono, fontSize: 9, color: T.ink400, letterSpacing: '0.04em' }}>
+                  Updated {new Date(preVisitNotesUpdatedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                </span>
+              )}
+            </Stack>
+          </HRow>
+          <Body size={14} color={T.ink700} lh={1.6} style={{ fontStyle: 'italic' }}>
+            &ldquo;{preVisitNotes}&rdquo;
+          </Body>
+        </Card>
+      )}
+
       {healthAlerts.length > 0 && (
         <Card p={20}>
           <Eyebrow color={T.danger} style={{ marginBottom: 12 }}>Active alerts</Eyebrow>
@@ -370,7 +547,6 @@ function OverviewTab({ child, healthAlerts, prescriptions, onResolve }: {
         </Card>
       )}
 
-      {/* Child details */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <Card p={18}>
           <Eyebrow color={T.ink400} style={{ marginBottom: 8 }}>Blood type</Eyebrow>
@@ -382,7 +558,6 @@ function OverviewTab({ child, healthAlerts, prescriptions, onResolve }: {
         </Card>
       </div>
 
-      {/* Known conditions */}
       {(child.medical_conditions?.length ?? 0) > 0 && (
         <Card p={18}>
           <Eyebrow color={T.ink400} style={{ marginBottom: 10 }}>Known conditions</Eyebrow>
@@ -392,7 +567,6 @@ function OverviewTab({ child, healthAlerts, prescriptions, onResolve }: {
         </Card>
       )}
 
-      {/* Active prescriptions */}
       {prescriptions.length > 0 && (
         <Card p={18}>
           <Eyebrow color={T.ink400} style={{ marginBottom: 12 }}>Active prescriptions</Eyebrow>
@@ -407,7 +581,6 @@ function OverviewTab({ child, healthAlerts, prescriptions, onResolve }: {
         </Card>
       )}
 
-      {/* Birth info */}
       {(child.birth_weight_grams || child.gestational_age_weeks) && (
         <Card p={18}>
           <Eyebrow color={T.ink400} style={{ marginBottom: 10 }}>Birth details</Eyebrow>
@@ -422,7 +595,8 @@ function OverviewTab({ child, healthAlerts, prescriptions, onResolve }: {
   );
 }
 
-function SleepTab({ logs }: { logs: SleepLog[] }) {
+function SleepTab({ logs, loading }: { logs: SleepLog[] | null; loading: boolean }) {
+  if (logs === null) return <TabSkeleton />;
 
   const avgHours = logs.length
     ? logs.reduce((s, l) => s + (l.duration_minutes ?? 0) / 60, 0) / logs.length
@@ -434,11 +608,11 @@ function SleepTab({ logs }: { logs: SleepLog[] }) {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <Card p={18}>
           <Eyebrow color={T.ink400} style={{ marginBottom: 6 }}>Avg hours / night</Eyebrow>
-          <Body size={28} weight={600} color={T.ink900}>{avgHours.toFixed(1)}h</Body>
+          <Body size={28} weight={600} color={T.ink900}>{loading ? '…' : `${avgHours.toFixed(1)}h`}</Body>
         </Card>
         <Card p={18}>
-          <Eyebrow color={T.ink400} style={{ marginBottom: 6 }}>Logs (30 days)</Eyebrow>
-          <Body size={28} weight={600} color={T.ink900}>{logs.length}</Body>
+          <Eyebrow color={T.ink400} style={{ marginBottom: 6 }}>Logs (90 days)</Eyebrow>
+          <Body size={28} weight={600} color={T.ink900}>{loading ? '…' : logs.length}</Body>
         </Card>
       </div>
       {sleepPoints.length > 1 && (
@@ -452,7 +626,7 @@ function SleepTab({ logs }: { logs: SleepLog[] }) {
           <Display size={18} italic weight={400}>Sleep log</Display>
         </div>
         {logs.length === 0
-          ? <div style={{ padding: 24 }}><Body size={13} color={T.ink500}>No sleep logs in the last 30 days.</Body></div>
+          ? <div style={{ padding: 24 }}><Body size={13} color={T.ink500}>No sleep logs in the last 90 days.</Body></div>
           : logs.map((log, i) => (
             <div key={log.id} style={{ display: 'flex', gap: 14, padding: '12px 20px', alignItems: 'center', borderBottom: i < logs.length - 1 ? `1px solid ${T.line}` : 'none' }}>
               <Icon name="sleep" size={16} color={T.brandSoft} />
@@ -472,14 +646,17 @@ function SleepTab({ logs }: { logs: SleepLog[] }) {
   );
 }
 
-function FeedingTab({ logs }: { logs: FeedingLog[] }) {
+function FeedingTab({ logs, loading }: { logs: FeedingLog[] | null; loading: boolean }) {
+  if (logs === null) return <TabSkeleton />;
   return (
     <Card p={0}>
       <div style={{ padding: '16px 20px', borderBottom: `1px solid ${T.line}` }}>
-        <Display size={18} italic weight={400}>Feeding log (30 days)</Display>
+        <Display size={18} italic weight={400}>
+          Feeding log{loading ? '' : ` · ${logs.length} entries`}
+        </Display>
       </div>
       {logs.length === 0
-        ? <div style={{ padding: 24 }}><Body size={13} color={T.ink500}>No feeding logs in the last 30 days.</Body></div>
+        ? <div style={{ padding: 24 }}><Body size={13} color={T.ink500}>No feeding logs recorded.</Body></div>
         : logs.map((log, i) => (
           <div key={log.id} style={{ display: 'flex', gap: 14, padding: '12px 20px', alignItems: 'center', borderBottom: i < logs.length - 1 ? `1px solid ${T.line}` : 'none' }}>
             <Icon name="feed" size={16} color={T.accent} />
@@ -499,14 +676,15 @@ function FeedingTab({ logs }: { logs: FeedingLog[] }) {
   );
 }
 
-function SymptomsTab({ reports }: { reports: SymptomReport[] }) {
+function SymptomsTab({ reports, loading }: { reports: SymptomReport[] | null; loading: boolean }) {
+  if (reports === null) return <TabSkeleton />;
   const severityColor = (s: number) =>
     s >= 4 ? T.danger : s === 3 ? T.accent : s === 2 ? T.gold : T.brandSoft;
 
   return (
     <Card p={0}>
       <div style={{ padding: '16px 20px', borderBottom: `1px solid ${T.line}` }}>
-        <Display size={18} italic weight={400}>Symptom reports</Display>
+        <Display size={18} italic weight={400}>Symptom reports{!loading && reports.length > 0 ? ` · ${reports.length}` : ''}</Display>
       </div>
       {reports.length === 0
         ? <div style={{ padding: 24 }}><Body size={13} color={T.ink500}>No symptoms logged.</Body></div>
@@ -528,7 +706,10 @@ function SymptomsTab({ reports }: { reports: SymptomReport[] }) {
   );
 }
 
-function MilestonesTab({ milestones }: { milestones: Milestone[] }) {
+function MilestonesTab({ milestones, loading }: { milestones: Milestone[] | null; loading: boolean }) {
+  if (milestones === null) return <TabSkeleton />;
+  if (milestones.length === 0) return <Body size={13} color={T.ink500}>No milestones logged yet.</Body>;
+
   const categories = ['motor', 'language', 'social', 'cognitive', 'feeding', 'other'] as const;
 
   return (
@@ -554,14 +735,12 @@ function MilestonesTab({ milestones }: { milestones: Milestone[] }) {
           </Card>
         );
       })}
-      {milestones.length === 0 && (
-        <Body size={13} color={T.ink500}>No milestones logged yet.</Body>
-      )}
     </Stack>
   );
 }
 
-function GrowthTab({ measurements }: { measurements: GrowthMeasurement[] }) {
+function GrowthTab({ measurements, loading }: { measurements: GrowthMeasurement[] | null; loading: boolean }) {
+  if (measurements === null) return <TabSkeleton />;
 
   const weightPoints = measurements.map(m => m.weight_grams ? m.weight_grams / 1000 : 0).reverse();
   const heightPoints = measurements.map(m => m.height_cm ?? 0).reverse();
@@ -580,7 +759,6 @@ function GrowthTab({ measurements }: { measurements: GrowthMeasurement[] }) {
           </Card>
         </>
       )}
-
       <Card p={0}>
         <div style={{ padding: '16px 20px', borderBottom: `1px solid ${T.line}` }}>
           <Display size={18} italic weight={400}>Growth history</Display>

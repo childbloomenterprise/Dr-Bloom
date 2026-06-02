@@ -22,6 +22,7 @@ interface Props {
   connectedPatients: PatientEntry[];
   pendingConnections: { id: string; child_id: string; created_at: string }[];
   doctorId: string;
+  lastLoggedAt: Record<string, string>; // childId → ISO timestamp
 }
 
 type ModalState =
@@ -29,7 +30,7 @@ type ModalState =
   | { type: 'request'; child: Child }
   | { type: 'invite' };
 
-export function PatientsClient({ connectedPatients, pendingConnections, doctorId }: Props) {
+export function PatientsClient({ connectedPatients, pendingConnections, doctorId, lastLoggedAt }: Props) {
   const router = useRouter();
   const [isMobile, setIsMobile] = React.useState(false);
   const [query, setQuery] = React.useState('');
@@ -261,6 +262,9 @@ export function PatientsClient({ connectedPatients, pendingConnections, doctorId
                         {child.gender && <Mono size={11}>· {child.gender}</Mono>}
                         {parent && <Mono size={11} color={T.ink400}>· {parent.full_name}</Mono>}
                       </HRow>
+                      {lastLoggedAt[child.id] && (
+                        <FreshnessLabel isoDate={lastLoggedAt[child.id]} />
+                      )}
                     </Stack>
                     <Chip tone="wash" icon="check">Connected</Chip>
                     <Icon name="chevron" size={14} stroke={1.6} color={T.ink300} style={{ marginLeft: 4 }} />
@@ -365,6 +369,25 @@ function Mono({ children, size = 11, color, style }: { children: React.ReactNode
   return (
     <span style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: size, color: color || T.ink400, letterSpacing: '0.04em', ...style }}>
       {children}
+    </span>
+  );
+}
+
+function FreshnessLabel({ isoDate }: { isoDate: string }) {
+  const ms    = Date.now() - new Date(isoDate).getTime();
+  const hours = ms / 3_600_000;
+  const days  = ms / 86_400_000;
+  const label = hours < 1    ? 'Logged < 1h ago'
+    : hours  < 24   ? `Logged ${Math.floor(hours)}h ago`
+    : days   < 7    ? `Logged ${Math.floor(days)}d ago`
+    : `Logged ${Math.floor(days)}d ago`;
+  const stale = days > 3;
+  return (
+    <span style={{
+      fontSize: 10, fontFamily: 'var(--font-mono, monospace)', letterSpacing: '0.04em',
+      color: stale ? T.warn : T.success,
+    }}>
+      · {label}
     </span>
   );
 }
