@@ -35,14 +35,13 @@ export function PatientsClient({ connectedPatients, pendingConnections, doctorId
   const [query, setQuery] = React.useState('');
   const [searchResults, setSearchResults] = React.useState<PatientSearchResult[]>([]);
   const [searching, setSearching] = React.useState(false);
+  const [searchError, setSearchError] = React.useState<string | null>(null);
   const [modal, setModal] = React.useState<ModalState>({ type: 'none' });
 
-  // Request access form
   const [requestMsg, setRequestMsg] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
-  const [toast, setToast] = React.useState<string | null>(null);
+  const [toast, setToast] = React.useState<{ msg: string; key: number } | null>(null);
 
-  // Invite form
   const [inviteEmail, setInviteEmail] = React.useState('');
   const [inviteChildName, setInviteChildName] = React.useState('');
   const [inviteChildDob, setInviteChildDob] = React.useState('');
@@ -54,23 +53,31 @@ export function PatientsClient({ connectedPatients, pendingConnections, doctorId
     return () => window.removeEventListener('resize', check);
   }, []);
 
-  // Debounced search
   React.useEffect(() => {
-    if (query.length < 2) { setSearchResults([]); return; }
+    if (query.length < 2) { setSearchResults([]); setSearchError(null); return; }
     const t = setTimeout(async () => {
       setSearching(true);
+      setSearchError(null);
       try {
         const res = await fetch(`/api/patients/search?q=${encodeURIComponent(query)}`);
         const json = await res.json();
-        setSearchResults(json.results ?? []);
-      } catch { setSearchResults([]); }
+        if (!res.ok) {
+          setSearchResults([]);
+          setSearchError(json.error ?? 'Search is temporarily unavailable. Please try again.');
+        } else {
+          setSearchResults(json.results ?? []);
+        }
+      } catch {
+        setSearchResults([]);
+        setSearchError('Search is temporarily unavailable. Please try again.');
+      }
       setSearching(false);
-    }, 380);
+    }, 150);
     return () => clearTimeout(t);
   }, [query]);
 
   function showToast(msg: string) {
-    setToast(msg);
+    setToast({ msg, key: Date.now() });
     setTimeout(() => setToast(null), 3500);
   }
 
@@ -103,11 +110,7 @@ export function PatientsClient({ connectedPatients, pendingConnections, doctorId
       const res = await fetch('/api/patients/invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          parentEmail: inviteEmail,
-          childName: inviteChildName,
-          childDob: inviteChildDob || null,
-        }),
+        body: JSON.stringify({ parentEmail: inviteEmail, childName: inviteChildName, childDob: inviteChildDob || null }),
       });
       if (!res.ok) {
         const json = await res.json();
@@ -136,120 +139,137 @@ export function PatientsClient({ connectedPatients, pendingConnections, doctorId
       <div style={{ padding: isMobile ? '16px 14px 40px' : '24px 32px 48px' }}>
 
         {/* Search bar */}
-        <Card p={isMobile ? 16 : 22} style={{ marginBottom: 20 }}>
-          <Eyebrow color={T.brand} style={{ marginBottom: 12 }}>Find a patient</Eyebrow>
-          <div style={{ position: 'relative' }}>
-            <Input
-              placeholder="Search by name or date of birth (YYYY-MM-DD)…"
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              style={{ paddingLeft: 44 }}
-            />
-            <Icon
-              name="search" size={17} stroke={1.6} color={T.ink400}
-              style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)' }}
-            />
-          </div>
-
-          {/* Search results */}
-          {hasSearch && (
-            <div style={{ marginTop: 12 }}>
-              {searching ? (
-                <Body size={13} color={T.ink400}>Searching…</Body>
-              ) : searchResults.length === 0 ? (
-                <Stack gap={10}>
-                  <Body size={13} color={T.ink500}>No child found for &ldquo;{query}&rdquo;.</Body>
-                  <Button
-                    variant="secondary" size="sm"
-                    onClick={() => setModal({ type: 'invite' })}
-                    icon="plus"
-                  >
-                    Invite parent to ChildBloom
-                  </Button>
-                </Stack>
-              ) : (
-                <Stack gap={8}>
-                  {searchResults.map(({ child, connectionStatus, connectionId }) => (
-                    <SearchResultRow
-                      key={child.id}
-                      child={child}
-                      connectionStatus={connectionStatus}
-                      onRequest={() => setModal({ type: 'request', child })}
-                    />
-                  ))}
-                </Stack>
-              )}
+        <div className="enter stagger-1" style={{ marginBottom: 20 }}>
+          <Card p={isMobile ? 16 : 22}>
+            <Eyebrow color={T.brand} style={{ marginBottom: 12 }}>Find a patient</Eyebrow>
+            <div style={{ position: 'relative' }}>
+              <Input
+                placeholder="Search by name or date of birth (YYYY-MM-DD)…"
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                style={{ paddingLeft: 44 }}
+              />
+              <div style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', transition: 'transform 0.2s', ...(searching ? { animation: 'spin 1s linear infinite' } : {}) }}>
+                <Icon name="search" size={17} stroke={1.6} color={searching ? T.brand : T.ink400} />
+              </div>
             </div>
-          )}
-        </Card>
+
+            {hasSearch && (
+              <div className="fade-down" style={{ marginTop: 12 }}>
+                {searching ? (
+                  <HRow gap={8} style={{ alignItems: 'center' }}>
+                    <div style={{ width: 16, height: 16, borderRadius: '50%', border: `2px solid ${T.ink200}`, borderTopColor: T.brand, animation: 'spin 0.7s linear infinite', flexShrink: 0 }} />
+                    <Body size={13} color={T.ink400}>Searching…</Body>
+                  </HRow>
+                ) : searchError ? (
+                  <HRow gap={8} style={{ alignItems: 'center', padding: '10px 14px', background: '#fff0ee', borderRadius: T.radius.md }}>
+                    <Icon name="shield" size={15} color={T.danger} />
+                    <Body size={13} color={T.danger}>{searchError}</Body>
+                  </HRow>
+                ) : searchResults.length === 0 ? (
+                  <Stack gap={12}>
+                    <Body size={13} color={T.ink500}>No child found for &ldquo;{query}&rdquo; in ChildBloom.</Body>
+                    <Button variant="secondary" size="sm" onClick={() => setModal({ type: 'invite' })} icon="plus">
+                      Invite parent to ChildBloom
+                    </Button>
+                  </Stack>
+                ) : (
+                  <Stack gap={6}>
+                    <HRow gap={6} style={{ alignItems: 'center', marginBottom: 2 }}>
+                      <Body size={12} color={T.ink400}>{searchResults.length} result{searchResults.length !== 1 ? 's' : ''}</Body>
+                    </HRow>
+                    {searchResults.map(({ child, connectionStatus }, ri) => (
+                      <div key={child.id} className={`slide-up stagger-${Math.min(ri + 1, 6)}`}>
+                        <SearchResultRow
+                          child={child}
+                          connectionStatus={connectionStatus}
+                          onRequest={() => setModal({ type: 'request', child })}
+                        />
+                      </div>
+                    ))}
+                  </Stack>
+                )}
+              </div>
+            )}
+          </Card>
+        </div>
 
         {/* Pending connections notice */}
         {pendingConnections.length > 0 && (
-          <div style={{
-            marginBottom: 16, padding: '12px 18px', borderRadius: T.radius.md,
-            background: T.brandWash, display: 'flex', alignItems: 'center', gap: 12,
-          }}>
-            <Icon name="clock" size={16} color={T.brand} />
-            <Body size={13} color={T.brand} weight={500}>
-              {pendingConnections.length} connection request{pendingConnections.length > 1 ? 's' : ''} awaiting parent approval
-            </Body>
+          <div className="enter stagger-2" style={{ marginBottom: 16 }}>
+            <div style={{
+              padding: '12px 18px', borderRadius: T.radius.md,
+              background: T.brandWash, display: 'flex', alignItems: 'center', gap: 12,
+              transition: 'transform 0.18s cubic-bezier(.22,.68,0,1.1)',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.transform = 'translateX(4px)')}
+            onMouseLeave={e => (e.currentTarget.style.transform = 'translateX(0)')}
+            >
+              <Icon name="clock" size={16} color={T.brand} />
+              <Body size={13} color={T.brand} weight={500}>
+                {pendingConnections.length} connection request{pendingConnections.length > 1 ? 's' : ''} awaiting parent approval
+              </Body>
+            </div>
           </div>
         )}
 
         {/* Connected patients list */}
-        <Card p={0}>
-          <div style={{ padding: '18px 22px 12px', borderBottom: `1px solid ${T.line}` }}>
-            <HRow gap={12} style={{ alignItems: 'center', justifyContent: 'space-between' }}>
-              <Stack gap={2}>
-                <Eyebrow color={T.ink400}>Connected patients</Eyebrow>
-                <Display size={20} italic weight={400}>
-                  {connectedPatients.length === 0 ? 'No patients yet.' : `${connectedPatients.length} patient${connectedPatients.length > 1 ? 's' : ''}.`}
-                </Display>
-              </Stack>
-            </HRow>
-          </div>
-
-          {connectedPatients.length === 0 ? (
-            <div style={{ padding: '32px 22px', textAlign: 'center' }}>
-              <Body size={13} color={T.ink500}>Search above to find and connect with patients.</Body>
+        <div className="enter stagger-3">
+          <Card p={0}>
+            <div style={{ padding: '18px 22px 12px', borderBottom: `1px solid ${T.line}` }}>
+              <HRow gap={12} style={{ alignItems: 'center', justifyContent: 'space-between' }}>
+                <Stack gap={2}>
+                  <Eyebrow color={T.ink400}>Connected patients</Eyebrow>
+                  <Display size={20} italic weight={400}>
+                    {connectedPatients.length === 0 ? 'No patients yet.' : `${connectedPatients.length} patient${connectedPatients.length > 1 ? 's' : ''}.`}
+                  </Display>
+                </Stack>
+              </HRow>
             </div>
-          ) : (
-            connectedPatients.map(({ child, parent }, i) => (
-              <Link key={child.id} href={`/patients/${child.id}`} style={{ textDecoration: 'none' }}>
-                <div
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 16, padding: '14px 22px',
-                    borderBottom: i < connectedPatients.length - 1 ? `1px solid ${T.line}` : 'none',
-                    cursor: 'pointer', transition: 'background 0.15s',
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.background = T.surfaceDim)}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                >
-                  {child.photo_url ? (
-                    <img
-                      src={child.photo_url} alt={child.first_name}
-                      style={{ width: 44, height: 44, borderRadius: T.radius.pill, objectFit: 'cover', flexShrink: 0 }}
-                    />
-                  ) : (
-                    <Avatar name={`${child.first_name} ${child.last_name ?? ''}`} size={44} tone="wash" />
-                  )}
-                  <Stack gap={3} style={{ flex: 1, minWidth: 0 }}>
-                    <Body size={14} weight={600} color={T.ink900}>
-                      {child.first_name} {child.last_name ?? ''}
-                    </Body>
-                    <HRow gap={8}>
-                      <Mono size={11}>{ageFromDob(child.date_of_birth)}</Mono>
-                      {child.gender && <Mono size={11}>· {child.gender}</Mono>}
-                      {parent && <Mono size={11} color={T.ink400}>· {parent.full_name}</Mono>}
-                    </HRow>
-                  </Stack>
-                  <Chip tone="wash" icon="check">Connected</Chip>
-                  <Icon name="chevron" size={14} stroke={1.6} color={T.ink300} style={{ marginLeft: 4 }} />
-                </div>
-              </Link>
-            ))
-          )}
-        </Card>
+
+            {connectedPatients.length === 0 ? (
+              <div style={{ padding: '32px 22px', textAlign: 'center' }}>
+                <Body size={13} color={T.ink500}>Search above to find and connect with patients.</Body>
+              </div>
+            ) : (
+              connectedPatients.map(({ child, parent }, i) => (
+                <Link key={child.id} href={`/patients/${child.id}`} style={{ textDecoration: 'none' }}>
+                  <div
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 16, padding: '14px 22px',
+                      borderBottom: i < connectedPatients.length - 1 ? `1px solid ${T.line}` : 'none',
+                      cursor: 'pointer',
+                      transition: 'background 0.15s ease, padding-left 0.2s cubic-bezier(.22,.68,0,1.1)',
+                    }}
+                    onMouseEnter={e => { const d = e.currentTarget as HTMLDivElement; d.style.background = T.surfaceDim; d.style.paddingLeft = '28px'; }}
+                    onMouseLeave={e => { const d = e.currentTarget as HTMLDivElement; d.style.background = 'transparent'; d.style.paddingLeft = '22px'; }}
+                  >
+                    {child.photo_url ? (
+                      <img
+                        src={child.photo_url} alt={child.first_name}
+                        style={{ width: 44, height: 44, borderRadius: T.radius.pill, objectFit: 'cover', flexShrink: 0, transition: 'transform 0.2s' }}
+                      />
+                    ) : (
+                      <Avatar name={`${child.first_name} ${child.last_name ?? ''}`} size={44} tone="wash" />
+                    )}
+                    <Stack gap={3} style={{ flex: 1, minWidth: 0 }}>
+                      <Body size={14} weight={600} color={T.ink900}>
+                        {child.first_name} {child.last_name ?? ''}
+                      </Body>
+                      <HRow gap={8}>
+                        <Mono size={11}>{ageFromDob(child.date_of_birth)}</Mono>
+                        {child.gender && <Mono size={11}>· {child.gender}</Mono>}
+                        {parent && <Mono size={11} color={T.ink400}>· {parent.full_name}</Mono>}
+                      </HRow>
+                    </Stack>
+                    <Chip tone="wash" icon="check">Connected</Chip>
+                    <Icon name="chevron" size={14} stroke={1.6} color={T.ink300} style={{ marginLeft: 4 }} />
+                  </div>
+                </Link>
+              ))
+            )}
+          </Card>
+        </div>
       </div>
 
       {/* Request Access modal */}
@@ -321,13 +341,18 @@ export function PatientsClient({ connectedPatients, pendingConnections, doctorId
 
       {/* Toast */}
       {toast && (
-        <div style={{
-          position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
-          background: T.ink900, color: '#fff', padding: '12px 22px',
-          borderRadius: T.radius.pill, fontFamily: T.sans, fontSize: 13.5, fontWeight: 500,
-          boxShadow: T.shadow.lg, zIndex: 200, pointerEvents: 'none',
-        }}>
-          {toast}
+        <div
+          key={toast.key}
+          className="toast-enter"
+          style={{
+            position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+            background: T.ink900, color: '#fff', padding: '12px 22px',
+            borderRadius: T.radius.pill, fontFamily: T.sans, fontSize: 13.5, fontWeight: 500,
+            boxShadow: T.shadow.lg, zIndex: 200, pointerEvents: 'none',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {toast.msg}
         </div>
       )}
     </div>
@@ -358,10 +383,15 @@ function SearchResultRow({
       : null;
 
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px',
-      borderRadius: T.radius.md, background: T.surfaceDim,
-    }}>
+    <div
+      style={{
+        display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px',
+        borderRadius: T.radius.md, background: T.surfaceDim,
+        transition: 'background 0.15s',
+      }}
+      onMouseEnter={e => (e.currentTarget.style.background = T.brandWash)}
+      onMouseLeave={e => (e.currentTarget.style.background = T.surfaceDim)}
+    >
       <Avatar name={`${child.first_name} ${child.last_name ?? ''}`} size={38} tone="wash" />
       <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
         <Body size={13.5} weight={600} color={T.ink900}>
@@ -372,11 +402,13 @@ function SearchResultRow({
       {statusBadge ?? (
         <button
           onClick={onRequest}
+          className="dr-btn"
           style={{
+            '--btn-glow': 'rgba(15,61,46,.32)',
             height: 34, padding: '0 14px', borderRadius: T.radius.pill,
             background: T.brand, color: '#fff', border: 'none',
-            fontFamily: T.sans, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
-          }}
+            fontFamily: T.sans, fontSize: 12.5, fontWeight: 600,
+          } as React.CSSProperties}
         >
           Request access
         </button>
@@ -390,18 +422,22 @@ function Modal({ children, onClose }: { children: React.ReactNode; onClose: () =
     <>
       <div
         onClick={onClose}
+        className="modal-overlay"
         style={{
-          position: 'fixed', inset: 0, background: 'rgba(11,23,20,0.45)',
-          backdropFilter: 'blur(2px)', zIndex: 100,
+          position: 'fixed', inset: 0, background: 'rgba(11,23,20,0.50)',
+          backdropFilter: 'blur(4px)', zIndex: 100,
         }}
       />
-      <div style={{
-        position: 'fixed', left: '50%', top: '50%',
-        transform: 'translate(-50%,-50%)',
-        width: 'min(480px, 92vw)',
-        background: T.surface, borderRadius: T.radius.xl,
-        padding: 28, boxShadow: T.shadow.lg, zIndex: 101,
-      }}>
+      <div
+        className="modal-enter"
+        style={{
+          position: 'fixed', left: '50%', top: '50%',
+          transform: 'translate(-50%,-50%)',
+          width: 'min(480px, 92vw)',
+          background: T.surface, borderRadius: T.radius.xl,
+          padding: 28, boxShadow: T.shadow.lg, zIndex: 101,
+        }}
+      >
         <button
           onClick={onClose}
           style={{
@@ -410,7 +446,10 @@ function Modal({ children, onClose }: { children: React.ReactNode; onClose: () =
             background: T.surfaceDim, border: 'none',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             color: T.ink700, cursor: 'pointer',
+            transition: 'background 0.15s, transform 0.2s cubic-bezier(.22,.68,0,1.1)',
           }}
+          onMouseEnter={e => { const b = e.currentTarget as HTMLButtonElement; b.style.background = T.ink100; b.style.transform = 'scale(1.1) rotate(90deg)'; }}
+          onMouseLeave={e => { const b = e.currentTarget as HTMLButtonElement; b.style.background = T.surfaceDim; b.style.transform = 'scale(1) rotate(0deg)'; }}
         >
           <Icon name="close" size={16} stroke={1.7} />
         </button>

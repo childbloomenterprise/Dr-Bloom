@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createChildBloomAdminClient } from '@/lib/supabase/childbloom-admin';
+import { buildChildSearchOr } from '@/lib/childbloom/patient-search';
 import type { Child, UserProfile, PatientSearchResult } from '@/types/database';
 
 export async function GET(req: NextRequest) {
@@ -28,16 +29,21 @@ export async function GET(req: NextRequest) {
 
   const cbAdmin = createChildBloomAdminClient();
 
+  const orFilter = buildChildSearchOr(q);
+  console.log('[search] q:', JSON.stringify(q), '| filter:', orFilter);
+
   const { data: children, error } = await cbAdmin
     .from('children')
     .select('*, parent:user_profiles!children_parent_id_fkey(id, full_name, email)')
-    .or(
-      `first_name.ilike.%${q}%,last_name.ilike.%${q}%,date_of_birth.eq.${isDateLike(q) ? q : 'null'}`
-    )
+    .or(orFilter)
     .eq('is_active', true)
     .limit(20);
 
+  console.log('[search] rows:', children?.length ?? 0, '| error:', error?.message ?? null);
+
   if (error) {
+    // Surface the failure — never let a backend error masquerade as "no results".
+    console.error('[patients/search] ChildBloom query failed:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
@@ -70,8 +76,4 @@ export async function GET(req: NextRequest) {
   });
 
   return NextResponse.json({ results });
-}
-
-function isDateLike(s: string): boolean {
-  return /^\d{4}-\d{2}-\d{2}$/.test(s);
 }
