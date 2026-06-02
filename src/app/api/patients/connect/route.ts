@@ -43,8 +43,7 @@ export async function POST(req: NextRequest) {
 
   // Mirror connection into ChildBloom so the parent's inbox shows it.
   // Upsert is safe because (doctor_id, child_id) has a unique constraint.
-  // If the doctor re-sends after a decline, this resets it to pending.
-  await cbAdmin.from('doctor_child_connections').upsert(
+  const { error: cbConnError } = await cbAdmin.from('doctor_child_connections').upsert(
     {
       doctor_id: user.id,
       child_id: childId,
@@ -58,17 +57,25 @@ export async function POST(req: NextRequest) {
     { onConflict: 'doctor_id,child_id' }
   );
 
-  // Notify parent via ChildBloom notifications table
+  if (cbConnError) {
+    console.error('[connect] ChildBloom connection mirror failed:', cbConnError);
+    // Non-fatal: Dr Bloom's own record was created; inform caller but don't block.
+  }
+
+  // Notify parent via ChildBloom notifications table (triggers realtime toast in app).
   if (child?.parent_id) {
     const childName = child.first_name ?? 'your child';
-    await cbAdmin.from('notifications').insert({
+    const { error: notifError } = await cbAdmin.from('notifications').insert({
       recipient_id: child.parent_id,
       type: 'connection_request',
       title: `Dr. ${doctorDisplayName ?? 'A doctor'} requested access`,
       body: `A doctor has requested access to ${childName}'s health data in Dr Bloom.${message ? ` Message: "${message}"` : ''}`,
       data: { doctor_id: user.id, child_id: childId },
     });
+    if (notifError) {
+      console.error('[connect] ChildBloom notification insert failed:', notifError);
+    }
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, cbMirrorOk: !cbConnError });
 }
