@@ -3,15 +3,22 @@
 // approves or declines a doctor's connection request, so the doctor gets
 // a real-time toast in Dr. Bloom without requiring cross-Supabase auth.
 //
-// Auth: X-Internal-Key must equal CHILDBLOOM_SERVICE_ROLE_KEY.
-// This reuses the already-shared key — no new secret needed.
+// Auth: X-Internal-Key must equal DRBLOOM_INTERNAL_KEY — a dedicated
+// least-privilege secret shared only for this notify channel. The legacy
+// CHILDBLOOM_SERVICE_ROLE_KEY is still accepted during the transition so
+// neither app breaks if it deploys first; remove it once both sides are
+// confirmed on the new key.
 
 import { type NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export async function POST(req: NextRequest) {
   const key = req.headers.get('x-internal-key');
-  if (!key || key !== process.env.CHILDBLOOM_SERVICE_ROLE_KEY) {
+  const validKeys = [
+    process.env.DRBLOOM_INTERNAL_KEY,
+    process.env.CHILDBLOOM_SERVICE_ROLE_KEY, // legacy — drop after rollout
+  ].filter(Boolean);
+  if (!key || !validKeys.includes(key)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
