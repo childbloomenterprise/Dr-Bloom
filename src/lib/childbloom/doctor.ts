@@ -22,13 +22,14 @@ export async function getDoctorIdentity(
   cbAdmin: SupabaseClient,
   doctorId: string,
 ): Promise<{ fullName: string; specialty: string | null }> {
-  const { data } = await cbAdmin
+  const { data, error } = await cbAdmin
     .from('doctor_child_connections')
     .select('doctor_display_name, doctor_specialty')
     .eq('doctor_id', doctorId)
     .order('updated_at', { ascending: false })
     .limit(1)
     .maybeSingle();
+  if (error) console.warn('[getDoctorIdentity] query failed:', error.message);
   return {
     fullName: data?.doctor_display_name ?? 'Your doctor',
     specialty: data?.doctor_specialty ?? null,
@@ -39,12 +40,20 @@ export async function getDoctorIdentity(
 // user_profiles.id FKs auth.users.id, and the REST client can't write to the auth
 // schema — so this goes through the ensure_doctor_shadow SECURITY DEFINER RPC, which
 // seeds both auth.users and user_profiles with the doctor's existing id. Idempotent.
+// NOTE: the live ensure_doctor_shadow RPC only takes (p_id, p_name) — it
+// synthesises the shadow email and does not store specialty. We accept email/
+// specialty here so callers don't have to change if the RPC is later extended,
+// but we deliberately do NOT pass them: PostgREST resolves RPCs by exact arg
+// set, so sending unknown params would 500 every clinical write.
 export async function ensureDoctorProfile(
   cbAdmin: SupabaseClient,
   doctor: { id: string; email?: string | null; fullName: string; specialty?: string | null },
 ): Promise<void> {
   const { error } = await cbAdmin.rpc('ensure_doctor_shadow', { p_id: doctor.id, p_name: doctor.fullName });
-  if (error) console.error('[ensureDoctorProfile] failed:', error.message);
+  if (error) {
+    console.error('[ensureDoctorProfile] failed:', error.message);
+    throw new Error(`ensureDoctorProfile failed for doctor ${doctor.id}: ${error.message}`);
+  }
 }
 
 // Send a notification to the child's parent in ChildBloom (realtime inbox channel).

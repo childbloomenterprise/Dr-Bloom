@@ -132,9 +132,13 @@ export function ChildProfileClient(props: Props) {
   }, [tab, streams, loadStream]);
 
   async function resolveAlert(alertId: string) {
-    await supabase.from('health_alerts')
+    const { error } = await supabase.from('health_alerts')
       .update({ resolved_at: new Date().toISOString(), resolved_by: doctorId })
       .eq('id', alertId);
+    if (error) {
+      show('Could not resolve alert', 'error');
+      return;
+    }
     router.refresh();
   }
 
@@ -898,8 +902,10 @@ function VaccinePanel({ childId, isMobile, onClose, onDone, show }: { childId: s
         body: JSON.stringify({ kind: 'vaccine', vaccineName, doseNumber: doseNumber ? Number(doseNumber) : null, administeredAt, batchNumber: batchNumber || null, facility: facility || null }),
       });
       const json = await res.json();
-      if (res.ok) onDone(json.record as VaccinationRecord);
-      else show(json.error ?? 'Failed', 'error');
+      if (res.ok) {
+        if (!json.record) { show('Unexpected response from server', 'error'); }
+        else onDone(json.record as VaccinationRecord);
+      } else show(json.error ?? 'Failed', 'error');
     } catch { show('Network error', 'error'); }
     setSaving(false);
   }
@@ -939,8 +945,10 @@ function RxPanel({ childId, isMobile, onClose, onDone, show }: { childId: string
         body: JSON.stringify({ kind: 'prescription', ...f, durationDays: f.durationDays ? Number(f.durationDays) : null }),
       });
       const json = await res.json();
-      if (res.ok) onDone(json.prescription as Prescription);
-      else show(json.error ?? 'Failed', 'error');
+      if (res.ok) {
+        if (!json.prescription) { show('Unexpected response from server', 'error'); }
+        else onDone(json.prescription as Prescription);
+      } else show(json.error ?? 'Failed', 'error');
     } catch { show('Network error', 'error'); }
     setSaving(false);
   }
@@ -988,8 +996,10 @@ function VisitPanel({ childId, isMobile, onClose, onDone, show }: { childId: str
         body: JSON.stringify({ kind: 'consultation', ...f, followUpDays: f.followUpDays ? Number(f.followUpDays) : null, pushParentSummary: pushSummary, parentSummary: pushSummary ? (parentSummary || f.plan || f.assessment) : null }),
       });
       const json = await res.json();
-      if (res.ok) onDone(json.consultation as Consultation);
-      else show(json.error ?? 'Failed', 'error');
+      if (res.ok) {
+        if (!json.consultation) { show('Unexpected response from server', 'error'); }
+        else onDone(json.consultation as Consultation);
+      } else show(json.error ?? 'Failed', 'error');
     } catch { show('Network error', 'error'); }
     setSaving(false);
   }
@@ -1053,8 +1063,12 @@ function IrisPanel({ child, isMobile, onClose }: { child: Child; isMobile: boole
       const res = await fetch('/api/iris', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ childId: child.id, message: userMsg, history: messages, userRole: 'doctor' }) });
       const json = await res.json();
       if (json.reply) setMessages(prev => [...prev, { role: 'assistant', content: json.reply }]);
-    } catch { /* surfaced as no reply */ }
-    setSending(false);
+    } catch (err) {
+      console.error('[Iris chat] send failed:', err);
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, I couldn\'t process that request. Please try again.' }]);
+    } finally {
+      setSending(false);
+    }
   }
 
   return (

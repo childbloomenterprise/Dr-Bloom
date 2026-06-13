@@ -78,22 +78,21 @@ export function DashboardClient({ profile, connectedChildren, healthAlerts, noti
         title={<>{greeting}, <span style={{ fontStyle: 'italic' }}>Dr. {firstName}</span>.</>}
         subtitle={`${connectedChildren.length} patients · ${healthAlerts.length} active alert${healthAlerts.length !== 1 ? 's' : ''} · Iris ready`}
         trailing={
-          <Link href="/consult">
-            <button
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 8, height: 44, padding: '0 18px',
-                borderRadius: T.radius.pill, background: T.brand, color: '#fff', border: 'none',
-                fontFamily: T.sans, fontSize: 13.5, fontWeight: 600, letterSpacing: T.sansTracking, cursor: 'pointer',
-                transition: 'transform 0.15s cubic-bezier(.22,.68,0,1.1), box-shadow 0.2s ease',
-              }}
-              onMouseEnter={e => { const b = e.currentTarget; b.style.transform = 'scale(1.04)'; b.style.boxShadow = '0 6px 18px rgba(15,61,46,.35)'; }}
-              onMouseLeave={e => { const b = e.currentTarget; b.style.transform = 'scale(1)'; b.style.boxShadow = 'none'; }}
-              onMouseDown={e => { (e.currentTarget).style.transform = 'scale(0.97)'; }}
-              onMouseUp={e => { (e.currentTarget).style.transform = 'scale(1.04)'; }}
-            >
-              <Icon name="sparkle" size={15} />
-              New consultation
-            </button>
+          <Link
+            href="/consult"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8, height: 44, padding: '0 18px',
+              borderRadius: T.radius.pill, background: T.brand, color: '#fff', textDecoration: 'none',
+              fontFamily: T.sans, fontSize: 13.5, fontWeight: 600, letterSpacing: T.sansTracking,
+              transition: 'transform 0.15s cubic-bezier(.22,.68,0,1.1), box-shadow 0.2s ease',
+            }}
+            onMouseEnter={e => { const a = e.currentTarget; a.style.transform = 'scale(1.04)'; a.style.boxShadow = '0 6px 18px rgba(15,61,46,.35)'; }}
+            onMouseLeave={e => { const a = e.currentTarget; a.style.transform = 'scale(1)'; a.style.boxShadow = 'none'; }}
+            onMouseDown={e => { (e.currentTarget).style.transform = 'scale(0.97)'; }}
+            onMouseUp={e => { (e.currentTarget).style.transform = 'scale(1.04)'; }}
+          >
+            <Icon name="sparkle" size={15} />
+            New consultation
           </Link>
         }
       />
@@ -172,22 +171,21 @@ export function DashboardClient({ profile, connectedChildren, healthAlerts, noti
                 </Body>
                 <Spacer h={20} />
                 <HRow gap={8}>
-                  <Link href={connectedChildren.length === 0 ? '/patients' : '/consult'}>
-                    <button
-                      style={{
-                        height: 40, padding: '0 16px', borderRadius: T.radius.pill, background: T.brand,
-                        color: '#fff', border: 'none', fontFamily: T.sans, fontSize: 13, fontWeight: 600,
-                        display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer',
-                        transition: 'transform 0.15s cubic-bezier(.22,.68,0,1.1), box-shadow 0.2s',
-                      }}
-                      onMouseEnter={e => { const b = e.currentTarget; b.style.transform = 'scale(1.05)'; b.style.boxShadow = '0 4px 14px rgba(15,61,46,.3)'; }}
-                      onMouseLeave={e => { const b = e.currentTarget; b.style.transform = 'scale(1)'; b.style.boxShadow = 'none'; }}
-                      onMouseDown={e => { (e.currentTarget).style.transform = 'scale(0.96)'; }}
-                      onMouseUp={e => { (e.currentTarget).style.transform = 'scale(1.05)'; }}
-                    >
-                      <Icon name={connectedChildren.length === 0 ? 'profile' : 'sparkle'} size={14} />
-                      {connectedChildren.length === 0 ? 'Find patients' : 'Open Iris'}
-                    </button>
+                  <Link
+                    href={connectedChildren.length === 0 ? '/patients' : '/consult'}
+                    style={{
+                      height: 40, padding: '0 16px', borderRadius: T.radius.pill, background: T.brand,
+                      color: '#fff', textDecoration: 'none', fontFamily: T.sans, fontSize: 13, fontWeight: 600,
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      transition: 'transform 0.15s cubic-bezier(.22,.68,0,1.1), box-shadow 0.2s',
+                    }}
+                    onMouseEnter={e => { const a = e.currentTarget; a.style.transform = 'scale(1.05)'; a.style.boxShadow = '0 4px 14px rgba(15,61,46,.3)'; }}
+                    onMouseLeave={e => { const a = e.currentTarget; a.style.transform = 'scale(1)'; a.style.boxShadow = 'none'; }}
+                    onMouseDown={e => { (e.currentTarget).style.transform = 'scale(0.96)'; }}
+                    onMouseUp={e => { (e.currentTarget).style.transform = 'scale(1.05)'; }}
+                  >
+                    <Icon name={connectedChildren.length === 0 ? 'profile' : 'sparkle'} size={14} />
+                    {connectedChildren.length === 0 ? 'Find patients' : 'Open Iris'}
                   </Link>
                   {unreadCount > 0 && (
                     <Chip tone="wash">{unreadCount} new alert{unreadCount > 1 ? 's' : ''}</Chip>
@@ -253,14 +251,13 @@ export function DashboardClient({ profile, connectedChildren, healthAlerts, noti
                       {connectedChildren.length === 0 ? 'No patients yet.' : `${connectedChildren.length} patient${connectedChildren.length > 1 ? 's' : ''}.`}
                     </Display>
                   </Stack>
-                  <Link href="/patients">
-                    <button
-                      style={{ height: 36, padding: '0 14px', borderRadius: T.radius.pill, background: T.brand, color: '#fff', border: 'none', fontFamily: T.sans, fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.2s' }}
-                      onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.05)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(15,61,46,.28)'; }}
-                      onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = 'none'; }}
-                    >
-                      <Icon name="profile" size={13} /> Patients
-                    </button>
+                  <Link
+                    href="/patients"
+                    style={{ height: 36, padding: '0 14px', borderRadius: T.radius.pill, background: T.brand, color: '#fff', textDecoration: 'none', fontFamily: T.sans, fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6, transition: 'transform 0.15s, box-shadow 0.2s' }}
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.05)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(15,61,46,.28)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = 'none'; }}
+                  >
+                    <Icon name="profile" size={13} /> Patients
                   </Link>
                 </HRow>
               </div>
@@ -268,10 +265,11 @@ export function DashboardClient({ profile, connectedChildren, healthAlerts, noti
                 <div style={{ padding: '32px 22px', textAlign: 'center' }}>
                   <Body size={14} color={T.ink500}>No connected patients yet.</Body>
                   <Spacer h={12} />
-                  <Link href="/patients">
-                    <button style={{ height: 40, padding: '0 18px', borderRadius: T.radius.pill, background: T.brandWash, color: T.brand, border: 'none', fontFamily: T.sans, fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'background 0.18s' }}>
-                      Find patients →
-                    </button>
+                  <Link
+                    href="/patients"
+                    style={{ height: 40, padding: '0 18px', borderRadius: T.radius.pill, background: T.brandWash, color: T.brand, textDecoration: 'none', fontFamily: T.sans, fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', transition: 'background 0.18s' }}
+                  >
+                    Find patients →
                   </Link>
                 </div>
               ) : (

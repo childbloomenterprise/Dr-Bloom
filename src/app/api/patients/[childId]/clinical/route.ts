@@ -49,8 +49,14 @@ export async function POST(req: NextRequest, { params }: Params) {
   const doctor: DoctorIdentity = { id: user.id, fullName: identity.fullName, specialty: identity.specialty };
   const childName = child.first_name ?? 'your child';
 
-  // Shadow doctor row so the FKs below resolve.
-  await ensureDoctorProfile(cbAdmin, { id: user.id, email: user.email ?? null, fullName: identity.fullName, specialty: identity.specialty });
+  // Shadow doctor row so the FKs below resolve. If this fails, every clinical
+  // insert below would otherwise blow up with an opaque FK violation on doctor_id
+  // — so fail fast with a clear message instead.
+  try {
+    await ensureDoctorProfile(cbAdmin, { id: user.id, email: user.email ?? null, fullName: identity.fullName, specialty: identity.specialty });
+  } catch (err) {
+    return NextResponse.json({ error: 'Could not initialize doctor profile', detail: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 
   if (kind === 'vaccine') {
     const { vaccineName, doseNumber, administeredAt, batchNumber, facility, nextDueDate, notes } = body as Record<string, string | number | null>;
@@ -120,6 +126,17 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   // ChildBloom prescriptions.consultation_id is NOT NULL → ensure we have one.
   let consultationId = (p.consultationId as string) ?? null;
+  if (consultationId) {
+    const { data: existingConsult, error: consultErr } = await cbAdmin
+      .from('consultations')
+      .select('id')
+      .eq('id', consultationId)
+      .eq('child_id', childId)
+      .eq('doctor_id', user.id)
+      .maybeSingle();
+    if (consultErr) return NextResponse.json({ error: consultErr.message }, { status: 500 });
+    if (!existingConsult) return NextResponse.json({ error: 'Invalid consultationId for this doctor/child' }, { status: 403 });
+  }
   if (!consultationId) {
     const { data: stub, error: stubErr } = await cbAdmin.from('consultations').insert({
       doctor_id: user.id,
@@ -172,11 +189,15 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (!prescriptionId) return NextResponse.json({ error: 'prescriptionId required' }, { status: 400 });
 
   const cbAdmin = createChildBloomAdminClient();
-  const { error } = await cbAdmin
+  const { data: updated, error } = await cbAdmin
     .from('prescriptions')
     .update({ is_active: isActive ?? false })
     .eq('id', prescriptionId)
-    .eq('child_id', childId);
+    .eq('child_id', childId)
+    .eq('doctor_id', user.id)
+    .select('id')
+    .maybeSingle();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (!updated) return NextResponse.json({ error: 'Prescription not found' }, { status: 404 });
   return NextResponse.json({ ok: true });
 }

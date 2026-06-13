@@ -24,6 +24,8 @@ export function TopBar({ eyebrow, title, subtitle, trailing, isMobile, onMenu }:
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button
+            type="button"
+            aria-label="Open navigation menu"
             onClick={onMenu}
             style={{
               width: 40, height: 40, borderRadius: T.radius.pill,

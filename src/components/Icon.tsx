@@ -73,7 +73,7 @@ export function Icon({
     case 'rx': return (<svg {...props}><path d="M6 20V5h4a3 3 0 010 6H6m4 0l5 7M13 14l5 5M18 14l-5 5"/></svg>);
     case 'stethoscope': return (<svg {...props}><path d="M6 3v5a4 4 0 008 0V3M5 3h2M13 3h2M10 16v1a5 5 0 0010 0v-1"/><circle cx="19" cy="13" r="2"/></svg>);
     case 'calendar': return (<svg {...props}><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 9h16M8 3v4M16 3v4"/></svg>);
-    case 'vaccine': return (<svg {...props}><path d="M14 4l6 6M17 7l-9 9-3.5.5L4 20m1-1l.5-3.5L14.5 6.5M11 7l6 6"/></svg>);
+    case 'vaccine': return (<svg {...props}><rect x="9" y="3" width="6" height="9" rx="2"/><path d="M12 12v5M9 14h6M7 17a5 5 0 0010 0"/></svg>);
     default: return (<svg {...props}><circle cx="12" cy="12" r="6"/></svg>);
   }
 }

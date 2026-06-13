@@ -64,7 +64,12 @@ export default async function PatientsPage() {
   // Data freshness — latest entry per child across ALL parent-logged tables
   // (sleep, feeding, symptoms, growth, milestones, vaccines). Shown as
   // "Last logged X ago" so the doctor knows whether the record is current.
-  const lastLoggedAt = await fetchLastLoggedMap(childIds);
+  let lastLoggedAt: Record<string, string> = {};
+  try {
+    lastLoggedAt = await fetchLastLoggedMap(childIds);
+  } catch (err) {
+    console.error('[PatientsPage] fetchLastLoggedMap failed:', err);
+  }
 
   return (
     <PatientsClient
