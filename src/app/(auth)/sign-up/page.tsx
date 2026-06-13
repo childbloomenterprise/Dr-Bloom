@@ -9,7 +9,7 @@ import { Icon } from '@/components/Icon';
 
 export default function SignUp() {
   const router = useRouter();
-  const supabase = createClient();
+  // Lazy client creation in handlers only — keeps static prerender env-free.
   const [fullName, setFullName] = React.useState('');
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
@@ -19,6 +19,7 @@ export default function SignUp() {
 
   async function handleGoogle() {
     setLoading(true); setError('');
+    const supabase = createClient();
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: `${window.location.origin}/auth/callback` },
@@ -43,6 +44,7 @@ export default function SignUp() {
       }
 
       // Sign in with the credentials just created
+      const supabase = createClient();
       const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
       if (signInErr) {
         setError(signInErr.message);

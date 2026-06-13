@@ -9,7 +9,9 @@ import { Icon } from '@/components/Icon';
 
 export default function SignIn() {
   const router = useRouter();
-  const supabase = createClient();
+  // Create the browser client lazily inside handlers, never in the render body —
+  // otherwise static prerender (build time) constructs it and @supabase/ssr throws
+  // when env vars aren't present in that environment.
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [loading, setLoading] = React.useState(false);
@@ -18,6 +20,7 @@ export default function SignIn() {
 
   async function handleGoogle() {
     setLoading(true); setError('');
+    const supabase = createClient();
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: `${window.location.origin}/auth/callback` },
@@ -27,6 +30,7 @@ export default function SignIn() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true); setError('');
+    const supabase = createClient();
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) { setError(error.message); setLoading(false); return; }
