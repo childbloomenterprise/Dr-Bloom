@@ -91,13 +91,19 @@ export function PatientsClient({ connectedPatients, pendingConnections, doctorId
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ childId: modal.child.id, message: requestMsg }),
       });
+      const json = await res.json();
       if (!res.ok) {
-        const json = await res.json();
         showToast(json.error ?? 'Request failed');
       } else {
         setModal({ type: 'none' });
         setRequestMsg('');
-        showToast('Request sent to parent');
+        // The Dr Bloom record always saves; warn if the parent-facing sync lagged so
+        // the doctor knows to follow up rather than assuming the parent was notified.
+        if (json.parentNotified === false || json.cbMirrorOk === false) {
+          showToast('Request saved — parent inbox sync is delayed, they may not see it yet');
+        } else {
+          showToast('Request sent to parent');
+        }
         router.refresh();
       }
     } catch { showToast('Network error'); }

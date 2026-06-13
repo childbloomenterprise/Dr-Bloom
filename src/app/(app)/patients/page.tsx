@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createChildBloomAdminClient } from '@/lib/supabase/childbloom-admin';
 import { redirect } from 'next/navigation';
 import { PatientsClient } from './PatientsClient';
+import { fetchLastLoggedMap } from '@/lib/childbloom/fetch';
 import type { Child, DoctorChildConnection, UserProfile } from '@/types/database';
 
 type PatientEntry = {
@@ -60,28 +61,10 @@ export default async function PatientsPage() {
     .eq('doctor_id', user.id)
     .eq('status', 'pending');
 
-  // Data freshness — latest entry timestamp per child across sleep + feeding logs.
-  // Used to show "Last logged X ago" on patient cards so doctor knows if data is current.
-  const freshnessMap = new Map<string, string>();
-  if (childIds.length > 0) {
-    const [sleepRes, feedRes] = await Promise.all([
-      cbAdmin.from('sleep_logs').select('child_id, created_at').in('child_id', childIds).order('created_at', { ascending: false }),
-      cbAdmin.from('feeding_logs').select('child_id, created_at').in('child_id', childIds).order('created_at', { ascending: false }),
-    ]);
-    const allEntries = [
-      ...(sleepRes.data ?? []),
-      ...(feedRes.data ?? []),
-    ] as { child_id: string; created_at: string }[];
-
-    for (const e of allEntries) {
-      const existing = freshnessMap.get(e.child_id);
-      if (!existing || e.created_at > existing) {
-        freshnessMap.set(e.child_id, e.created_at);
-      }
-    }
-  }
-
-  const lastLoggedAt = Object.fromEntries(freshnessMap.entries());
+  // Data freshness — latest entry per child across ALL parent-logged tables
+  // (sleep, feeding, symptoms, growth, milestones, vaccines). Shown as
+  // "Last logged X ago" so the doctor knows whether the record is current.
+  const lastLoggedAt = await fetchLastLoggedMap(childIds);
 
   return (
     <PatientsClient

@@ -6,6 +6,7 @@ import { createChildBloomAdminClient } from '@/lib/supabase/childbloom-admin';
 import type {
   Child, SleepLog, FeedingLog, SymptomReport,
   Milestone, GrowthMeasurement, Prescription,
+  VaccinationRecord, Consultation,
 } from '@/types/database';
 
 function ninetyDaysAgo(): string {
@@ -129,6 +130,60 @@ export async function fetchAllChildDataForIris(childId: string) {
     fetchActivePrescriptions(childId),
   ]);
   return { child, sleep, feeding, symptoms, milestones, growth, prescriptions };
+}
+
+// Vaccination records — all time, most recent first. (ChildBloom table.)
+export async function fetchVaccinationRecords(childId: string): Promise<VaccinationRecord[]> {
+  const supabase = createChildBloomAdminClient();
+  const { data } = await supabase
+    .from('vaccination_records')
+    .select('*')
+    .eq('child_id', childId)
+    .order('administered_at', { ascending: false });
+  return (data ?? []) as VaccinationRecord[];
+}
+
+// Full prescriptions (active + inactive) for the Rx tab. (ChildBloom — the unified store.)
+export async function fetchPrescriptionsFull(childId: string): Promise<Prescription[]> {
+  const supabase = createChildBloomAdminClient();
+  const { data } = await supabase
+    .from('prescriptions')
+    .select('*')
+    .eq('child_id', childId)
+    .order('prescribed_at', { ascending: false });
+  return (data ?? []) as Prescription[];
+}
+
+// Consultations / visit history for this doctor + child, newest first. (ChildBloom.)
+export async function fetchConsultations(childId: string, doctorId: string): Promise<Consultation[]> {
+  const supabase = createChildBloomAdminClient();
+  const { data } = await supabase
+    .from('consultations')
+    .select('*')
+    .eq('child_id', childId)
+    .eq('doctor_id', doctorId)
+    .order('consultation_date', { ascending: false });
+  return (data ?? []) as Consultation[];
+}
+
+// Latest activity timestamp per child across every parent-logged table, merged by max.
+// Powers the "Last logged X ago" freshness badge on patient cards.
+export async function fetchLastLoggedMap(childIds: string[]): Promise<Record<string, string>> {
+  if (!childIds.length) return {};
+  const cbAdmin = createChildBloomAdminClient();
+  const tables = ['sleep_logs', 'feeding_logs', 'symptom_reports', 'growth_measurements', 'milestones', 'vaccination_records'];
+  const results = await Promise.all(
+    tables.map(t =>
+      cbAdmin.from(t).select('child_id, created_at').in('child_id', childIds).order('created_at', { ascending: false }),
+    ),
+  );
+  const map: Record<string, string> = {};
+  for (const res of results) {
+    for (const row of (res.data ?? []) as { child_id: string; created_at: string }[]) {
+      if (!map[row.child_id] || row.created_at > map[row.child_id]) map[row.child_id] = row.created_at;
+    }
+  }
+  return map;
 }
 
 // Overview: latest one entry from each category (for the Overview tab).

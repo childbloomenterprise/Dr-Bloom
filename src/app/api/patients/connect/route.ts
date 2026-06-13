@@ -63,6 +63,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Notify parent via ChildBloom notifications table (triggers realtime toast in app).
+  let parentNotified = false;
   if (child?.parent_id) {
     const childName = child.first_name ?? 'your child';
     const { error: notifError } = await cbAdmin.from('notifications').insert({
@@ -74,8 +75,10 @@ export async function POST(req: NextRequest) {
     });
     if (notifError) {
       console.error('[connect] ChildBloom notification insert failed:', notifError);
+    } else {
+      parentNotified = true;
     }
   }
 
-  return NextResponse.json({ ok: true, cbMirrorOk: !cbConnError });
+  return NextResponse.json({ ok: true, cbMirrorOk: !cbConnError, parentNotified });
 }

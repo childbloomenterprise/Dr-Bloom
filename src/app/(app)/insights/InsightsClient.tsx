@@ -64,90 +64,119 @@ export function InsightsClient({ notifications, children, vitals, userId }: Prop
 
         {/* Left: notifications */}
         <Stack gap={16}>
-          <Card p={0}>
-            <div style={{ padding: '18px 22px', borderBottom: `1px solid ${T.line}` }}>
-              <HRow gap={10} style={{ alignItems: 'center', justifyContent: 'space-between' }}>
-                <Display size={20} italic weight={400}>All alerts.</Display>
-                {unread.length > 0 && <Chip tone="wash">{unread.length} new</Chip>}
-              </HRow>
-            </div>
-            {liveNotifs.length === 0 ? (
-              <div style={{ padding: 32, textAlign: 'center' }}>
-                <Body size={14} color={T.ink500}>No alerts yet. They appear here when Iris notices something worth your attention.</Body>
+          <div className="enter stagger-1">
+            <Card p={0}>
+              <div style={{ padding: '18px 22px', borderBottom: `1px solid ${T.line}` }}>
+                <HRow gap={10} style={{ alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Display size={20} italic weight={400}>All alerts.</Display>
+                  {unread.length > 0 && <Chip tone="wash">{unread.length} new</Chip>}
+                </HRow>
               </div>
-            ) : liveNotifs.map((n, i) => (
-              <div key={n.id} style={{
-                display: 'flex', gap: 14, padding: '16px 22px', alignItems: 'flex-start',
-                borderBottom: i < liveNotifs.length - 1 ? `1px solid ${T.line}` : 'none',
-                background: n.read_at ? 'transparent' : T.brandTint,
-                transition: 'background 0.15s',
-              }}>
-                <div style={{ width: 36, height: 36, borderRadius: T.radius.md, background: n.read_at ? T.surfaceDim : T.brandWash, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Icon name={n.kind === 'milestone' ? 'milestone' : n.kind === 'vital' ? 'thermo' : 'sparkle'} size={16} color={n.read_at ? T.ink400 : T.brand} />
+              {liveNotifs.length === 0 ? (
+                <div style={{ padding: 32, textAlign: 'center' }}>
+                  <Body size={14} color={T.ink500}>No alerts yet. They appear here when Iris notices something worth your attention.</Body>
                 </div>
-                <Stack gap={2} style={{ flex: 1 }}>
-                  <Body size={14} weight={600} color={T.ink900}>{n.title}</Body>
-                  {n.body && <Body size={12.5} color={T.ink500} lh={1.5}>{n.body}</Body>}
-                  <Mono size={10} color={T.ink300}>{new Date(n.created_at).toLocaleString()}</Mono>
-                </Stack>
-                {!n.read_at && (
-                  <button onClick={() => markRead(n.id)} style={{ flexShrink: 0, background: 'none', border: 'none', color: T.brand, fontFamily: T.sans, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: '4px 0' }}>
-                    Read
-                  </button>
-                )}
-              </div>
-            ))}
-          </Card>
+              ) : liveNotifs.map((n, i) => (
+                <div key={n.id} className={`slide-right stagger-${Math.min(i + 1, 6)}`} style={{
+                  display: 'flex', gap: 14, padding: '16px 22px', alignItems: 'flex-start',
+                  borderBottom: i < liveNotifs.length - 1 ? `1px solid ${T.line}` : 'none',
+                  background: n.read_at ? 'transparent' : T.brandTint,
+                  transition: 'background 0.2s, transform 0.18s',
+                  cursor: 'default',
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.transform = 'translateX(3px)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = 'translateX(0)'; }}
+                >
+                  <div style={{
+                    width: 36, height: 36, borderRadius: T.radius.md,
+                    background: n.read_at ? T.surfaceDim : T.brandWash,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                    transition: 'background 0.2s',
+                  }}>
+                    <Icon name={n.kind === 'milestone' ? 'milestone' : n.kind === 'vital' ? 'thermo' : 'sparkle'} size={16} color={n.read_at ? T.ink400 : T.brand} />
+                  </div>
+                  <Stack gap={2} style={{ flex: 1 }}>
+                    <Body size={14} weight={600} color={T.ink900}>{n.title}</Body>
+                    {n.body && <Body size={12.5} color={T.ink500} lh={1.5}>{n.body}</Body>}
+                    <Mono size={10} color={T.ink300}>{new Date(n.created_at).toLocaleString()}</Mono>
+                  </Stack>
+                  {!n.read_at && (
+                    <button
+                      onClick={() => markRead(n.id)}
+                      style={{
+                        flexShrink: 0, background: 'none', border: 'none', color: T.brand,
+                        fontFamily: T.sans, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: '4px 8px',
+                        borderRadius: T.radius.pill,
+                        transition: 'background 0.15s, transform 0.15s',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = T.brandWash; e.currentTarget.style.transform = 'scale(1.06)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.transform = 'scale(1)'; }}
+                    >
+                      Read
+                    </button>
+                  )}
+                </div>
+              ))}
+            </Card>
+          </div>
         </Stack>
 
         {/* Right: trend charts */}
         <Stack gap={16}>
-          <Card p={0} style={{ overflow: 'hidden' }}>
-            <div style={{ padding: '18px 20px', borderBottom: `1px solid ${T.line}` }}>
-              <Eyebrow color={T.brand}>Iris · Active predictions</Eyebrow>
-              <Display size={18} italic weight={400} style={{ marginTop: 4 }}>Pattern analysis.</Display>
-            </div>
-            <div style={{ padding: 20 }}>
-              <Body size={13} color={T.ink500} lh={1.6}>
-                {children.length === 0
-                  ? 'Add a child profile and start logging vitals to receive pattern-based insights from Iris.'
-                  : `Iris is monitoring ${children.length} profile${children.length > 1 ? 's' : ''}. Alerts appear above when patterns emerge in growth, sleep, temperature, or milestones.`}
-              </Body>
-            </div>
-          </Card>
+          <div className="enter stagger-2">
+            <Card p={0} style={{ overflow: 'hidden' }}>
+              <div style={{ padding: '18px 20px', borderBottom: `1px solid ${T.line}` }}>
+                <Eyebrow color={T.brand}>Iris · Active predictions</Eyebrow>
+                <Display size={18} italic weight={400} style={{ marginTop: 4 }}>Pattern analysis.</Display>
+              </div>
+              <div style={{ padding: 20 }}>
+                <Body size={13} color={T.ink500} lh={1.6}>
+                  {children.length === 0
+                    ? 'Add a child profile and start logging vitals to receive pattern-based insights from Iris.'
+                    : `Iris is monitoring ${children.length} profile${children.length > 1 ? 's' : ''}. Alerts appear above when patterns emerge in growth, sleep, temperature, or milestones.`}
+                </Body>
+              </div>
+            </Card>
+          </div>
 
           {sleepData.length > 2 && (
-            <Card p={20}>
-              <Eyebrow color={T.ink400} style={{ marginBottom: 12 }}>Sleep trend</Eyebrow>
-              <Spark points={sleepData} w={280} h={64} color={T.brandSoft} />
-              <Body size={11} color={T.ink400} style={{ marginTop: 8 }}>
-                Avg {(sleepData.reduce((a, b) => a + b, 0) / sleepData.length).toFixed(1)}h over last {sleepData.length} entries
-              </Body>
-            </Card>
+            <div className="enter stagger-3">
+              <Card p={20}>
+                <Eyebrow color={T.ink400} style={{ marginBottom: 12 }}>Sleep trend</Eyebrow>
+                <Spark points={sleepData} w={280} h={64} color={T.brandSoft} />
+                <Body size={11} color={T.ink400} style={{ marginTop: 8 }}>
+                  Avg {(sleepData.reduce((a, b) => a + b, 0) / sleepData.length).toFixed(1)}h over last {sleepData.length} entries
+                </Body>
+              </Card>
+            </div>
           )}
 
           {tempData.length > 2 && (
-            <Card p={20}>
-              <Eyebrow color={T.ink400} style={{ marginBottom: 12 }}>Temperature trend</Eyebrow>
-              <Spark points={tempData} w={280} h={64} color={T.accent} />
-              <Body size={11} color={T.ink400} style={{ marginTop: 8 }}>
-                Last: {tempData[tempData.length - 1]}°C
-              </Body>
-            </Card>
+            <div className="enter stagger-4">
+              <Card p={20}>
+                <Eyebrow color={T.ink400} style={{ marginBottom: 12 }}>Temperature trend</Eyebrow>
+                <Spark points={tempData} w={280} h={64} color={T.accent} />
+                <Body size={11} color={T.ink400} style={{ marginTop: 8 }}>
+                  Last: {tempData[tempData.length - 1]}°C
+                </Body>
+              </Card>
+            </div>
           )}
 
-          <Card p={20}>
-            <Eyebrow color={T.ink400} style={{ marginBottom: 12 }}>Children monitored</Eyebrow>
-            {children.length === 0
-              ? <Body size={13} color={T.ink500}>No children yet.</Body>
-              : children.map(c => (
-                <HRow key={c.id} gap={10} style={{ padding: '8px 0', alignItems: 'center', borderBottom: `1px solid ${T.line}` }}>
-                  <Avatar name={c.name} size={32} tone="wash" />
-                  <Body size={13.5} weight={500} color={T.ink900}>{c.name}</Body>
-                  <div style={{ width: 6, height: 6, borderRadius: 3, background: T.success, marginLeft: 'auto' }} />
-                </HRow>
-              ))}
-          </Card>
+          <div className="enter stagger-5">
+            <Card p={20}>
+              <Eyebrow color={T.ink400} style={{ marginBottom: 12 }}>Children monitored</Eyebrow>
+              {children.length === 0
+                ? <Body size={13} color={T.ink500}>No children yet.</Body>
+                : children.map((c: any) => (
+                  <HRow key={c.id} gap={10} style={{ padding: '8px 0', alignItems: 'center', borderBottom: `1px solid ${T.line}`, transition: 'background 0.15s' }}>
+                    <Avatar name={c.name} size={32} tone="wash" />
+                    <Body size={13.5} weight={500} color={T.ink900}>{c.name}</Body>
+                    <div className="dot-pulse" style={{ width: 7, height: 7, borderRadius: '50%', background: T.success, marginLeft: 'auto' }} />
+                  </HRow>
+                ))}
+            </Card>
+          </div>
         </Stack>
       </div>
     </div>

@@ -161,9 +161,9 @@ export function ConsultClient({
         <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           {!consult ? (
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-              <div style={{ maxWidth: 440, width: '100%', textAlign: 'center' }}>
+              <div className="enter" style={{ maxWidth: 440, width: '100%', textAlign: 'center' }}>
                 <div style={{ opacity: 0.15, marginBottom: 24 }}>
-                  <BloomFlower size={180} />
+                  <BloomFlower size={180} animate />
                 </div>
                 <Display size={28} italic lh={1.1} style={{ marginBottom: 12 }}>Start a conversation.</Display>
                 <Body size={14} color={T.ink500} lh={1.6} style={{ marginBottom: 28 }}>
@@ -216,18 +216,19 @@ export function ConsultClient({
               {/* Messages */}
               <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
                 {messages.length === 0 && (
-                  <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                  <div className="fade-in" style={{ textAlign: 'center', padding: '40px 0' }}>
                     <Body size={14} color={T.ink400}>Send your first message to begin.</Body>
                   </div>
                 )}
-                {messages.map(msg => (
-                  <div key={msg.id} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                {messages.map((msg, mi) => (
+                  <div key={msg.id} className="slide-up" style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start', animationDelay: `${Math.min(mi * 30, 200)}ms` }}>
                     {msg.role === 'assistant' ? (
                       <div style={{
                         maxWidth: '80%', background: T.brand, color: '#fff',
                         borderRadius: T.radius.lg, padding: '16px 20px', position: 'relative',
+                        boxShadow: '0 4px 16px rgba(15,61,46,.25)',
                       }}>
-                        <div style={{ position: 'absolute', top: 12, right: 12, opacity: 0.6 }}>
+                        <div style={{ position: 'absolute', top: 12, right: 12, opacity: 0.6, animation: 'breathe 3s ease-in-out infinite' }}>
                           <Icon name="sparkle" size={14} stroke={1.6} color="#fff" />
                         </div>
                         <div style={{ fontFamily: T.sans, fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)', marginBottom: 8 }}>Iris</div>
@@ -236,18 +237,18 @@ export function ConsultClient({
                         </div>
                       </div>
                     ) : (
-                      <div style={{ maxWidth: '78%', background: T.surfaceDim, color: T.ink900, padding: '10px 16px', borderRadius: T.radius.lg, fontFamily: T.sans, fontSize: 14, lineHeight: 1.4 }}>
+                      <div style={{ maxWidth: '78%', background: T.surfaceDim, color: T.ink900, padding: '10px 16px', borderRadius: T.radius.lg, fontFamily: T.sans, fontSize: 14, lineHeight: 1.4, boxShadow: T.shadow.sm }}>
                         {msg.content}
                       </div>
                     )}
                   </div>
                 ))}
                 {sending && (
-                  <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                    <div style={{ background: T.brand, borderRadius: T.radius.lg, padding: '14px 20px' }}>
-                      <div className="pulse" style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                  <div className="slide-up" style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                    <div style={{ background: T.brand, borderRadius: T.radius.lg, padding: '14px 20px', boxShadow: '0 4px 16px rgba(15,61,46,.2)' }}>
+                      <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
                         {[0, 1, 2].map(i => (
-                          <div key={i} style={{ width: 6, height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.7)', animationDelay: `${i * 0.2}s` }} />
+                          <div key={i} className="pulse" style={{ width: 7, height: 7, borderRadius: '50%', background: 'rgba(255,255,255,0.8)', animationDelay: `${i * 0.22}s` }} />
                         ))}
                       </div>
                     </div>
@@ -268,14 +269,26 @@ export function ConsultClient({
                       flex: 1, height: 48, padding: '0 18px', borderRadius: T.radius.pill,
                       border: `1px solid ${T.line}`, background: T.bg, color: T.ink900,
                       fontFamily: T.sans, fontSize: 14, outline: 'none',
+                      transition: 'border-color 0.18s, box-shadow 0.18s',
                     }}
+                    onFocus={e => { e.currentTarget.style.borderColor = T.brand; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(15,61,46,.12)'; }}
+                    onBlur={e => { e.currentTarget.style.borderColor = T.line; e.currentTarget.style.boxShadow = 'none'; }}
                   />
-                  <button type="submit" disabled={!input.trim() || sending} style={{
-                    width: 48, height: 48, borderRadius: T.radius.pill, background: T.brand,
-                    border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    cursor: input.trim() && !sending ? 'pointer' : 'not-allowed',
-                    opacity: !input.trim() || sending ? 0.5 : 1, flexShrink: 0,
-                  }}>
+                  <button
+                    type="submit"
+                    disabled={!input.trim() || sending}
+                    style={{
+                      width: 48, height: 48, borderRadius: T.radius.pill, background: T.brand,
+                      border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      cursor: input.trim() && !sending ? 'pointer' : 'not-allowed',
+                      opacity: !input.trim() || sending ? 0.5 : 1, flexShrink: 0,
+                      transition: 'transform 0.15s cubic-bezier(.22,.68,0,1.1), box-shadow 0.2s, opacity 0.15s',
+                    }}
+                    onMouseEnter={e => { if (input.trim() && !sending) { e.currentTarget.style.transform = 'scale(1.08)'; e.currentTarget.style.boxShadow = '0 4px 14px rgba(15,61,46,.35)'; } }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = 'none'; }}
+                    onMouseDown={e => { if (input.trim() && !sending) e.currentTarget.style.transform = 'scale(0.94)'; }}
+                    onMouseUp={e => { if (input.trim() && !sending) e.currentTarget.style.transform = 'scale(1.08)'; }}
+                  >
                     <Icon name="send" size={18} color="#fff" />
                   </button>
                 </HRow>
