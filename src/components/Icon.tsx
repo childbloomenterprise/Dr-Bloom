@@ -69,6 +69,11 @@ export function Icon({
     case 'sun': return (<svg {...props}><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.5 5.5l1.5 1.5M17 17l1.5 1.5M5.5 18.5L7 17M17 7l1.5-1.5"/></svg>);
     case 'moon': return (<svg {...props}><path d="M21 13a9 9 0 11-10-10 7 7 0 0010 10z"/></svg>);
     case 'logout': return (<svg {...props}><path d="M15 4h3a2 2 0 012 2v12a2 2 0 01-2 2h-3M10 17l-5-5 5-5M5 12h12"/></svg>);
+    case 'syringe': return (<svg {...props}><path d="M14 4l6 6M17 7l-9 9-3.5.5L4 20m1-1l.5-3.5L14.5 6.5M11 7l6 6M8.5 9.5l5 5"/></svg>);
+    case 'rx': return (<svg {...props}><path d="M6 20V5h4a3 3 0 010 6H6m4 0l5 7M13 14l5 5M18 14l-5 5"/></svg>);
+    case 'stethoscope': return (<svg {...props}><path d="M6 3v5a4 4 0 008 0V3M5 3h2M13 3h2M10 16v1a5 5 0 0010 0v-1"/><circle cx="19" cy="13" r="2"/></svg>);
+    case 'calendar': return (<svg {...props}><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 9h16M8 3v4M16 3v4"/></svg>);
+    case 'vaccine': return (<svg {...props}><path d="M14 4l6 6M17 7l-9 9-3.5.5L4 20m1-1l.5-3.5L14.5 6.5M11 7l6 6"/></svg>);
     default: return (<svg {...props}><circle cx="12" cy="12" r="6"/></svg>);
   }
 }
