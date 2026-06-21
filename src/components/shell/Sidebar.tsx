@@ -12,7 +12,6 @@ const NAV = [
   { href: '/patients', label: 'Patients',  icon: 'profile' },
   { href: '/consult',  label: 'Consult',   icon: 'note'    },
   { href: '/insights', label: 'Insights',  icon: 'sparkle' },
-  { href: '/children', label: 'Children',  icon: 'care'    },
 ];
 
 interface Props {

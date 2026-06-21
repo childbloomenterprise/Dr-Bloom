@@ -1,11 +1,8 @@
-import * as React from 'react';
-import { createClient } from '@/lib/supabase/server';
-import { ChildrenListClient } from './ChildrenListClient';
+import { redirect } from 'next/navigation';
 
-export default async function ChildrenPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user!.id).single();
-  const { data: children } = await supabase.from('children').select('*').order('created_at');
-  return <ChildrenListClient children={children ?? []} role={profile?.role ?? 'doctor'} />;
+// Retired in the cross-app unification (Stage 3). Doctors work with connected
+// ChildBloom children via /patients; the standalone Gen-1 patient list (backed by
+// the old per-app children/vitals/growth tables) is superseded.
+export default function ChildrenPage() {
+  redirect('/patients');
 }
