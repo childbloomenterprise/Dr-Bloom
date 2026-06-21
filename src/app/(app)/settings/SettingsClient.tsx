@@ -3,21 +3,21 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { theme as T } from '@/lib/theme';
-import { Stack, HRow, Card, Button, Display, Body, Mono, Eyebrow, Avatar, Chip, Spacer, Divider, Input, Select } from '@/components/primitives';
+import { Stack, HRow, Card, Button, Display, Body, Mono, Eyebrow, Avatar, Chip, Spacer, Divider, Input } from '@/components/primitives';
 import { TopBar } from '@/components/shell/TopBar';
-import { Icon } from '@/components/Icon';
+import { saveDoctorProfile } from './actions';
 
-interface Props { profile: any; userId: string; email: string; }
+interface Props { userId: string; email: string; fullName: string; specialty: string; }
 
-export function SettingsClient({ profile, userId, email }: Props) {
+export function SettingsClient({ userId, email, fullName: initialName, specialty: initialSpecialty }: Props) {
   const router = useRouter();
   const supabase = createClient();
   const [isMobile, setIsMobile] = React.useState(false);
-  const [fullName, setFullName] = React.useState(profile?.full_name ?? '');
-  const [specialty, setSpecialty] = React.useState(profile?.specialty ?? '');
-  const [hospital, setHospital] = React.useState(profile?.hospital ?? '');
+  const [fullName, setFullName] = React.useState(initialName);
+  const [specialty, setSpecialty] = React.useState(initialSpecialty);
   const [saving, setSaving] = React.useState(false);
   const [saved, setSaved] = React.useState(false);
+  const [error, setError] = React.useState('');
 
   React.useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -27,9 +27,11 @@ export function SettingsClient({ profile, userId, email }: Props) {
 
   async function saveProfile(e: React.FormEvent) {
     e.preventDefault();
-    setSaving(true);
-    await supabase.from('profiles').upsert({ id: userId, full_name: fullName, specialty: specialty || null, hospital: hospital || null });
-    setSaving(false); setSaved(true);
+    setSaving(true); setError('');
+    const res = await saveDoctorProfile({ fullName, specialty });
+    setSaving(false);
+    if (!res.ok) { setError(res.error ?? 'Could not save. Please try again.'); return; }
+    setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
 
@@ -42,7 +44,7 @@ export function SettingsClient({ profile, userId, email }: Props) {
     <div className="enter" style={{ height: '100vh', overflowY: 'auto', background: T.bg }}>
       <TopBar
         isMobile={isMobile}
-        onMenu={() => (window as any).__drBloomOpenDrawer?.()}
+        onMenu={() => (window as unknown as { __drBloomOpenDrawer?: () => void }).__drBloomOpenDrawer?.()}
         eyebrow="SETTINGS"
         title="Settings."
         subtitle="Manage your profile and account."
@@ -65,7 +67,7 @@ export function SettingsClient({ profile, userId, email }: Props) {
               <Stack gap={14}>
                 <Input label="Full name" type="text" value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Your full name" />
                 <Input label="Specialty" type="text" value={specialty} onChange={e => setSpecialty(e.target.value)} placeholder="e.g. Pediatrics, Neonatology" />
-                <Input label="Hospital / Clinic" type="text" value={hospital} onChange={e => setHospital(e.target.value)} placeholder="e.g. Bloom Children's Medical Center" />
+                {error && <Body size={13} color={T.danger}>{error}</Body>}
                 <Button type="submit" size="md" disabled={saving}>
                   {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save profile'}
                 </Button>

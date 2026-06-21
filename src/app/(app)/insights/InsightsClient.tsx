@@ -1,19 +1,32 @@
 'use client';
 import * as React from 'react';
 import { theme as T } from '@/lib/theme';
-import { Stack, HRow, Card, Display, Body, Mono, Eyebrow, Avatar, Chip, Spacer, Spark, Divider } from '@/components/primitives';
+import { Stack, HRow, Card, Display, Body, Mono, Eyebrow, Avatar, Chip } from '@/components/primitives';
 import { TopBar } from '@/components/shell/TopBar';
 import { Icon } from '@/components/Icon';
 import { createClient } from '@/lib/supabase/client';
-import { useRouter } from 'next/navigation';
 
-interface Props { notifications: any[]; children: any[]; vitals: any[]; userId: string; }
+interface NotificationRow {
+  id: string; type: string | null; title: string; body: string | null;
+  is_read: boolean; read_at: string | null; created_at: string;
+}
+interface ChildRow { id: string; first_name: string; last_name: string | null; }
+interface Props { notifications: NotificationRow[]; children: ChildRow[]; userId: string; }
 
-export function InsightsClient({ notifications, children, vitals, userId }: Props) {
-  const router = useRouter();
+function iconForType(type: string | null): string {
+  if (!type) return 'sparkle';
+  if (type.includes('vacc')) return 'shield';
+  if (type.includes('prescription')) return 'note';
+  if (type.includes('visit') || type.includes('consult')) return 'note';
+  if (type.includes('connection')) return 'profile';
+  if (type.includes('milestone')) return 'milestone';
+  return 'sparkle';
+}
+
+export function InsightsClient({ notifications, children, userId }: Props) {
   const supabase = createClient();
   const [isMobile, setIsMobile] = React.useState(false);
-  const [liveNotifs, setLiveNotifs] = React.useState(notifications);
+  const [liveNotifs, setLiveNotifs] = React.useState<NotificationRow[]>(notifications);
 
   React.useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -21,35 +34,37 @@ export function InsightsClient({ notifications, children, vitals, userId }: Prop
     return () => window.removeEventListener('resize', check);
   }, []);
 
-  // Realtime notifications
+  // Realtime — new doctor notifications (unified schema, recipient_id).
   React.useEffect(() => {
-    const ch = supabase.channel('notifications-live')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
-        (payload) => setLiveNotifs(prev => [payload.new as any, ...prev]))
+    const ch = supabase.channel('insights-notifs')
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `recipient_id=eq.${userId}` },
+        (payload) => setLiveNotifs(prev => [payload.new as NotificationRow, ...prev]))
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [userId]);
+  }, [userId, supabase]);
 
   async function markRead(id: string) {
-    await supabase.from('notifications').update({ read_at: new Date().toISOString() }).eq('id', id);
-    setLiveNotifs(prev => prev.map(n => n.id === id ? { ...n, read_at: new Date().toISOString() } : n));
+    const now = new Date().toISOString();
+    setLiveNotifs(prev => prev.map(n => n.id === id ? { ...n, is_read: true, read_at: now } : n));
+    try { await supabase.from('notifications').update({ is_read: true, read_at: now }).eq('id', id); } catch { /* local state already updated */ }
   }
-
   async function markAllRead() {
-    const unread = liveNotifs.filter(n => !n.read_at);
-    await Promise.all(unread.map(n => supabase.from('notifications').update({ read_at: new Date().toISOString() }).eq('id', n.id)));
-    setLiveNotifs(prev => prev.map(n => ({ ...n, read_at: n.read_at ?? new Date().toISOString() })));
+    const now = new Date().toISOString();
+    const unreadIds = liveNotifs.filter(n => !n.is_read).map(n => n.id);
+    setLiveNotifs(prev => prev.map(n => n.is_read ? n : { ...n, is_read: true, read_at: now }));
+    if (unreadIds.length) {
+      try { await supabase.from('notifications').update({ is_read: true, read_at: now }).in('id', unreadIds); } catch { /* local state already updated */ }
+    }
   }
 
-  const unread = liveNotifs.filter(n => !n.read_at);
-  const sleepData = vitals.slice(0, 14).map(v => v.sleep_hours ?? 0).reverse();
-  const tempData = vitals.filter(v => v.temp_c).slice(0, 14).map(v => v.temp_c!).reverse();
+  const unread = liveNotifs.filter(n => !n.is_read);
 
   return (
     <div className="enter" style={{ height: '100vh', overflowY: 'auto', background: T.bg }}>
       <TopBar
         isMobile={isMobile}
-        onMenu={() => (window as any).__drBloomOpenDrawer?.()}
+        onMenu={() => (window as unknown as { __drBloomOpenDrawer?: () => void }).__drBloomOpenDrawer?.()}
         eyebrow="IRIS · INSIGHTS"
         title="Insights."
         subtitle={`${unread.length} unread alert${unread.length !== 1 ? 's' : ''}`}
@@ -62,7 +77,7 @@ export function InsightsClient({ notifications, children, vitals, userId }: Prop
 
       <div style={{ padding: isMobile ? '16px 14px 40px' : '24px 32px 48px', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.4fr 1fr', gap: 20 }}>
 
-        {/* Left: notifications */}
+        {/* Left: alerts */}
         <Stack gap={16}>
           <div className="enter stagger-1">
             <Card p={0}>
@@ -74,43 +89,36 @@ export function InsightsClient({ notifications, children, vitals, userId }: Prop
               </div>
               {liveNotifs.length === 0 ? (
                 <div style={{ padding: 32, textAlign: 'center' }}>
-                  <Body size={14} color={T.ink500}>No alerts yet. They appear here when Iris notices something worth your attention.</Body>
+                  <Body size={14} color={T.ink500}>No alerts yet. Updates from your connected patients — new prescriptions, visit summaries, vaccines, and access approvals — appear here.</Body>
                 </div>
               ) : liveNotifs.map((n, i) => (
                 <div key={n.id} className={`slide-right stagger-${Math.min(i + 1, 6)}`} style={{
                   display: 'flex', gap: 14, padding: '16px 22px', alignItems: 'flex-start',
                   borderBottom: i < liveNotifs.length - 1 ? `1px solid ${T.line}` : 'none',
-                  background: n.read_at ? 'transparent' : T.brandTint,
+                  background: n.is_read ? 'transparent' : T.brandTint,
                   transition: 'background 0.2s, transform 0.18s',
-                  cursor: 'default',
                 }}
                 onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.transform = 'translateX(3px)'; }}
                 onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = 'translateX(0)'; }}
                 >
                   <div style={{
                     width: 36, height: 36, borderRadius: T.radius.md,
-                    background: n.read_at ? T.surfaceDim : T.brandWash,
+                    background: n.is_read ? T.surfaceDim : T.brandWash,
                     display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                    transition: 'background 0.2s',
                   }}>
-                    <Icon name={n.kind === 'milestone' ? 'milestone' : n.kind === 'vital' ? 'thermo' : 'sparkle'} size={16} color={n.read_at ? T.ink400 : T.brand} />
+                    <Icon name={iconForType(n.type)} size={16} color={n.is_read ? T.ink400 : T.brand} />
                   </div>
                   <Stack gap={2} style={{ flex: 1 }}>
                     <Body size={14} weight={600} color={T.ink900}>{n.title}</Body>
                     {n.body && <Body size={12.5} color={T.ink500} lh={1.5}>{n.body}</Body>}
                     <Mono size={10} color={T.ink300}>{new Date(n.created_at).toLocaleString()}</Mono>
                   </Stack>
-                  {!n.read_at && (
+                  {!n.is_read && (
                     <button
                       onClick={() => markRead(n.id)}
-                      style={{
-                        flexShrink: 0, background: 'none', border: 'none', color: T.brand,
-                        fontFamily: T.sans, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: '4px 8px',
-                        borderRadius: T.radius.pill,
-                        transition: 'background 0.15s, transform 0.15s',
-                      }}
-                      onMouseEnter={e => { e.currentTarget.style.background = T.brandWash; e.currentTarget.style.transform = 'scale(1.06)'; }}
-                      onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.transform = 'scale(1)'; }}
+                      style={{ flexShrink: 0, background: 'none', border: 'none', color: T.brand, fontFamily: T.sans, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: '4px 8px', borderRadius: T.radius.pill }}
+                      onMouseEnter={e => { e.currentTarget.style.background = T.brandWash; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
                     >
                       Read
                     </button>
@@ -121,57 +129,33 @@ export function InsightsClient({ notifications, children, vitals, userId }: Prop
           </div>
         </Stack>
 
-        {/* Right: trend charts */}
+        {/* Right: monitored patients */}
         <Stack gap={16}>
           <div className="enter stagger-2">
             <Card p={0} style={{ overflow: 'hidden' }}>
               <div style={{ padding: '18px 20px', borderBottom: `1px solid ${T.line}` }}>
-                <Eyebrow color={T.brand}>Iris · Active predictions</Eyebrow>
-                <Display size={18} italic weight={400} style={{ marginTop: 4 }}>Pattern analysis.</Display>
+                <Eyebrow color={T.brand}>Iris · Monitoring</Eyebrow>
+                <Display size={18} italic weight={400} style={{ marginTop: 4 }}>Your patients.</Display>
               </div>
               <div style={{ padding: 20 }}>
                 <Body size={13} color={T.ink500} lh={1.6}>
                   {children.length === 0
-                    ? 'Add a child profile and start logging vitals to receive pattern-based insights from Iris.'
-                    : `Iris is monitoring ${children.length} profile${children.length > 1 ? 's' : ''}. Alerts appear above when patterns emerge in growth, sleep, temperature, or milestones.`}
+                    ? 'Connect to a child in Patients to start monitoring. Alerts appear on the left as parents log data and you record care.'
+                    : `Iris is monitoring ${children.length} connected patient${children.length > 1 ? 's' : ''}. Alerts surface on the left when something needs your attention.`}
                 </Body>
               </div>
             </Card>
           </div>
 
-          {sleepData.length > 2 && (
-            <div className="enter stagger-3">
-              <Card p={20}>
-                <Eyebrow color={T.ink400} style={{ marginBottom: 12 }}>Sleep trend</Eyebrow>
-                <Spark points={sleepData} w={280} h={64} color={T.brandSoft} />
-                <Body size={11} color={T.ink400} style={{ marginTop: 8 }}>
-                  Avg {(sleepData.reduce((a, b) => a + b, 0) / sleepData.length).toFixed(1)}h over last {sleepData.length} entries
-                </Body>
-              </Card>
-            </div>
-          )}
-
-          {tempData.length > 2 && (
-            <div className="enter stagger-4">
-              <Card p={20}>
-                <Eyebrow color={T.ink400} style={{ marginBottom: 12 }}>Temperature trend</Eyebrow>
-                <Spark points={tempData} w={280} h={64} color={T.accent} />
-                <Body size={11} color={T.ink400} style={{ marginTop: 8 }}>
-                  Last: {tempData[tempData.length - 1]}°C
-                </Body>
-              </Card>
-            </div>
-          )}
-
-          <div className="enter stagger-5">
+          <div className="enter stagger-3">
             <Card p={20}>
-              <Eyebrow color={T.ink400} style={{ marginBottom: 12 }}>Children monitored</Eyebrow>
+              <Eyebrow color={T.ink400} style={{ marginBottom: 12 }}>Patients monitored</Eyebrow>
               {children.length === 0
-                ? <Body size={13} color={T.ink500}>No children yet.</Body>
-                : children.map((c: any) => (
-                  <HRow key={c.id} gap={10} style={{ padding: '8px 0', alignItems: 'center', borderBottom: `1px solid ${T.line}`, transition: 'background 0.15s' }}>
-                    <Avatar name={c.name} size={32} tone="wash" />
-                    <Body size={13.5} weight={500} color={T.ink900}>{c.name}</Body>
+                ? <Body size={13} color={T.ink500}>No connected patients yet.</Body>
+                : children.map((c) => (
+                  <HRow key={c.id} gap={10} style={{ padding: '8px 0', alignItems: 'center', borderBottom: `1px solid ${T.line}` }}>
+                    <Avatar name={c.first_name} size={32} tone="wash" />
+                    <Body size={13.5} weight={500} color={T.ink900}>{[c.first_name, c.last_name].filter(Boolean).join(' ')}</Body>
                     <div className="dot-pulse" style={{ width: 7, height: 7, borderRadius: '50%', background: T.success, marginLeft: 'auto' }} />
                   </HRow>
                 ))}
